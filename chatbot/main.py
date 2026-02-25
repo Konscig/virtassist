@@ -44,7 +44,11 @@ class Permission(vk.ABCRule[VKMessage]):
 
 
 routes = web.RouteTableDef()
-engine = create_engine(Config.SQLALCHEMY_DATABASE_URI)
+engine = create_engine(
+    Config.SQLALCHEMY_DATABASE_URI,
+    pool_pre_ping=True,
+    pool_recycle=3600,
+)
 vk_bot = vk.Bot(token=Config.VK_ACCESS_GROUP_TOKEN)
 vk_bot.labeler.vbml_ignore_case = True
 vk_bot.labeler.custom_rules["permission"] = Permission
