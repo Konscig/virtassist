@@ -13,7 +13,7 @@ import sys
 from typing import Any
 
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
@@ -39,7 +39,11 @@ def export_for_annotation(
 ) -> dict[str, Any]:
     """Экспортировать QuestionAnswer для аннотации."""
     with Session(engine) as session:
-        query = select(QuestionAnswer).order_by(QuestionAnswer.id)
+        query = (
+            select(QuestionAnswer)
+            .options(selectinload(QuestionAnswer.user))
+            .order_by(QuestionAnswer.id)
+        )
         if limit:
             query = query.limit(limit)
 
