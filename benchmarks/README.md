@@ -126,6 +126,8 @@ make run-dashboard-local
 - `analyze_topic_coverage.py` — покрытие тематических кластеров.
 - `analyze_real_users_domain.py` — доменная аналитика real-user корпуса (вопросы).
 - `analyze_users_domain.py` — аналитика пользователей (пользователи, безответные вопросы, timeline).
+- `export_for_annotation.py` — выгрузка CSV для ручной аннотации вопросов/ответов.
+- `analyze_annotated.py` — подсчёт аналитики на основе размеченного датасета.
 
 ---
 
