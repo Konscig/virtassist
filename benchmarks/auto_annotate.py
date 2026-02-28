@@ -141,12 +141,13 @@ def has_url_in_text(text: str) -> bool:
 def auto_annotate_dataset(
     input_path: Path,
     output_path: Path,
+    model: str | None = None,
     batch_size: int = 10,
     delay: float = 0.5,
 ) -> dict[str, Any]:
     """Автоматически аннотировать датасет с помощью LLM."""
     client = get_client()
-    model = get_model()
+    model = model or get_model()
 
     with open(input_path, "r", encoding="utf-8") as f:
         items = json.load(f)
@@ -212,6 +213,12 @@ def main() -> None:
         help="Путь к выходному JSON файлу",
     )
     parser.add_argument(
+        "--model",
+        type=str,
+        default=None,
+        help="Модель (по умолчанию из BENCHMARKS_JUDGE_MODEL)",
+    )
+    parser.add_argument(
         "--batch-size",
         type=int,
         default=10,
@@ -239,9 +246,13 @@ def main() -> None:
         stem = input_path.stem
         args.output = f"{input_path.parent}/{stem}_annotated.json"
 
+    model = args.model or get_model()
+    logger.info(f"Using model: {model}")
+
     result = auto_annotate_dataset(
         input_path=input_path,
         output_path=Path(args.output),
+        model=model,
         batch_size=args.batch_size,
         delay=args.delay,
     )
