@@ -16,6 +16,13 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
+ENV_FILE = Path(__file__).parent.parent / ".env.benchmark-models"
+if ENV_FILE.exists():
+    for line in ENV_FILE.read_text().strip().split("\n"):
+        if line and not line.startswith("#") and "=" in line:
+            key, value = line.split("=", 1)
+            os.environ.setdefault(key.strip(), value.strip())
+
 ANNOTATION_FIELDS = [
     "answer_type",
     "has_source",
