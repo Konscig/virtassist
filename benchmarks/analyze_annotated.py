@@ -58,8 +58,6 @@ def analyze_annotated_dataset(input_path: Path) -> dict[str, Any]:
             elif at == "2":
                 not_found_answers += 1
             elif at == "3":
-                error_answers += 1
-            elif at == "4":
                 normal_answers += 1
 
         if ar:
@@ -70,13 +68,10 @@ def analyze_annotated_dataset(input_path: Path) -> dict[str, Any]:
             answer_url_relevances[aur] += 1
 
     has_answer = sum(
-        1 for r in rows if str(r.get("annotate_answer_type", "")).strip() in ("3", "4")
+        1 for r in rows if str(r.get("annotate_answer_type", "")).strip() == "3"
     )
     real_answer_rate = has_answer / total if total else 0
 
-    relevant_answers = sum(
-        1 for r in rows if str(r.get("annotate_answer_relevance", "")).strip() == "1"
-    )
     relevant_urls = sum(
         1 for r in rows if str(r.get("annotate_url_relevance", "")).strip() == "1"
     )
@@ -86,8 +81,15 @@ def analyze_annotated_dataset(input_path: Path) -> dict[str, Any]:
         if str(r.get("annotate_answer_url_relevance", "")).strip() == "1"
     )
 
+    has_source_count = sum(
+        1 for r in rows if str(r.get("annotate_has_source", "")).strip() == "1"
+    )
+
     small_talk_count = sum(
         1 for r in rows if str(r.get("annotate_is_small_talk", "")).strip() == "1"
+    )
+    voproshalych_related = sum(
+        1 for r in rows if str(r.get("annotate_is_small_talk", "")).strip() == "2"
     )
     relevant_questions = sum(
         1 for r in rows if str(r.get("annotate_is_small_talk", "")).strip() == "0"
@@ -100,28 +102,23 @@ def analyze_annotated_dataset(input_path: Path) -> dict[str, Any]:
             by_platform[platform] = {
                 "total": 0,
                 "has_answer": 0,
-                "relevant": 0,
             }
         by_platform[platform]["total"] += 1
         at = str(row.get("annotate_answer_type", "")).strip()
-        ar = str(row.get("annotate_answer_relevance", "")).strip()
-        if at in ("3", "4"):
+        if at == "3":
             by_platform[platform]["has_answer"] += 1
-        if ar == "1":
-            by_platform[platform]["relevant"] += 1
 
     result = {
         "total_questions": total,
         "answer_type_distribution": {
             "empty": empty_answers,
             "not_found": not_found_answers,
-            "error_with_url": error_answers,
             "normal": normal_answers,
         },
         "real_answer_rate": real_answer_rate,
-        "answer_relevance": {
-            "relevant": relevant_answers,
-            "relevant_percent": relevant_answers / total * 100 if total else 0,
+        "has_source": {
+            "count": has_source_count,
+            "percent": has_source_count / total * 100 if total else 0,
         },
         "url_relevance": {
             "relevant": relevant_urls,
@@ -132,9 +129,9 @@ def analyze_annotated_dataset(input_path: Path) -> dict[str, Any]:
             "relevant_percent": relevant_answer_url / total * 100 if total else 0,
         },
         "small_talk": {
-            "count": small_talk_count,
-            "percent": small_talk_count / total * 100 if total else 0,
-            "relevant_questions": relevant_questions,
+            "small_talk": small_talk_count,
+            "voproshalych_related": voproshalych_related,
+            "by_delu": relevant_questions,
         },
         "by_platform": by_platform,
     }
@@ -181,52 +178,44 @@ def main() -> None:
     print("\n--- ТИПЫ ОТВЕТОВ ---")
     at = result["answer_type_distribution"]
     print(
-        f"  Пустой (answer пустой):    {at['empty']:5d} ({at['empty'] / result['total_questions'] * 100:5.1f}%)"
+        f"  Пустой:          {at['empty']:5d} ({at['empty'] / result['total_questions'] * 100:5.1f}%)"
     )
     print(
-        f"  Ответ не найден:           {at['not_found']:5d} ({at['not_found'] / result['total_questions'] * 100:5.1f}%)"
+        f"  Нет ответа/некорректный: {at['not_found']:5d} ({at['not_found'] / result['total_questions'] * 100:5.1f}%)"
     )
     print(
-        f"  Ошибка (есть URL):        {at['error_with_url']:5d} ({at['error_with_url'] / result['total_questions'] * 100:5.1f}%)"
-    )
-    print(
-        f"  Нормальный ответ:          {at['normal']:5d} ({at['normal'] / result['total_questions'] * 100:5.1f}%)"
+        f"  Нормальный:       {at['normal']:5d} ({at['normal'] / result['total_questions'] * 100:5.1f}%)"
     )
 
     print(f"\n--- РЕАЛЬНЫЙ ПОКАЗАТЕЛЬ ОТВЕТОВ ---")
     print(
-        f"  Вопросов с реальным ответом: {at['error_with_url'] + at['normal']} ({result['real_answer_rate'] * 100:.1f}%)"
+        f"  Вопросов с нормальным ответом: {at['normal']} ({result['real_answer_rate'] * 100:.1f}%)"
     )
+
+    print("\n--- НАЛИЧИЕ ИСТОЧНИКА ---")
+    hs = result["has_source"]
+    print(f"  С источником: {hs['count']:5d} ({hs['percent']:.1f}%)")
 
     print("\n--- РЕЛЕВАНТНОСТЬ ---")
-    ar = result["answer_relevance"]
-    print(
-        f"  Ответ релевантен вопросу:     {ar['relevant']:5d} ({ar['relevant_percent']:.1f}%)"
-    )
-
     ur = result["url_relevance"]
-    print(
-        f"  URL релевантен вопросу:      {ur['relevant']:5d} ({ur['relevant_percent']:.1f}%)"
-    )
+    print(f"  URL релевантен:      {ur['relevant']:5d} ({ur['relevant_percent']:.1f}%)")
 
     aur = result["answer_url_relevance"]
     print(
-        f"  Ответ релевантен URL:        {aur['relevant']:5d} ({aur['relevant_percent']:.1f}%)"
+        f"  Ответ релевантен URL: {aur['relevant']:5d} ({aur['relevant_percent']:.1f}%)"
     )
 
-    print("\n--- SMALL TALK ---")
+    print("\n--- ТИП ВОПРОСА ---")
     st = result["small_talk"]
-    print(f"  Small talk (общие вопросы): {st['count']:5d} ({st['percent']:.1f}%)")
-    print(
-        f"  По делу:                    {st['relevant_questions']:5d} ({100 - st['percent']:.1f}%)"
-    )
+    print(f"  Small talk:        {st['small_talk']:5d}")
+    print(f"  Про Вопрошалыча:   {st['voproshalych_related']:5d}")
+    print(f"  По делу:           {st['by_delu']:5d}")
 
     print("\n--- ПО ПЛАТФОРМАМ ---")
     for platform, data in result["by_platform"].items():
         has_rate = data["has_answer"] / data["total"] * 100 if data["total"] else 0
-        rel_rate = data["relevant"] / data["total"] * 100 if data["total"] else 0
         print(
-            f"  {platform:10s}: {data['total']:5d} вопросов, {has_rate:.1f}% с ответами, {rel_rate:.1f}% релевантных"
+            f"  {platform:10s}: {data['total']:5d} вопросов, {has_rate:.1f}% с ответами"
         )
 
     if args.output:

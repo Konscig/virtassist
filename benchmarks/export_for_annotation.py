@@ -25,12 +25,11 @@ logger = logging.getLogger(__name__)
 
 
 ANNOTATION_FIELDS = {
-    "answer_type": "Тип ответа: 1=пустой, 2=не найден, 3=ошибка, 4=нормальный",
-    "answer_relevance": "Релевантность ответа вопросу: 0=нет, 1=да, 2=частично",
-    "url_relevance": "Релевантность URL вопросу: 0=нет, 1=да, 2=частично",
-    "answer_url_relevance": "Релевантность ответа URL: 0=нет, 1=да, 2=частично",
-    "is_small_talk": "Small talk: 0=по делу, 1=общий (приветствие, болтовня)",
-    "notes": "Заметки",
+    "answer_type": "Тип ответа: 1=пустой, 2=нет ответа/некорректный, 3=нормальный",
+    "has_source": "Наличие источника: 0=нет, 1=есть",
+    "url_relevance": "Релевантность URL: 0=нет, 1=да",
+    "answer_url_relevance": "Релевантность ответа URL: 0=нет, 1=да",
+    "is_small_talk": "Small talk: 0=по делу, 1=small talk, 2=про Вопрошалыча",
 }
 
 
@@ -81,12 +80,13 @@ def export_for_annotation(
 
         if not answer:
             item["annotate_answer_type"] = "1"
-            item["annotate_answer_relevance"] = "0"
-            item["annotate_answer_url_relevance"] = "0"
 
         if not confluence_url:
+            item["annotate_has_source"] = "0"
             item["annotate_url_relevance"] = "0"
             item["annotate_answer_url_relevance"] = "0"
+        else:
+            item["annotate_has_source"] = "1"
 
         items.append(item)
 
