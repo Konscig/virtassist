@@ -110,7 +110,7 @@ def main() -> None:
 
     if args.output is None:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        args.output = f"benchmarks/data/annotation_{timestamp}.json"
+        args.output = f"benchmarks/data/dataset_annotation_{timestamp}.json"
 
     logging.basicConfig(
         level=logging.INFO,

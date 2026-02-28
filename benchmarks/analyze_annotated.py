@@ -137,7 +137,7 @@ def main() -> None:
     parser.add_argument(
         "--input",
         type=str,
-        default="benchmarks/data/annotation_dataset.json",
+        default="benchmarks/data/dataset_annotation.json",
         help="Путь к размеченному JSON файлу",
     )
     parser.add_argument(
