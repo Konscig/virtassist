@@ -1,12 +1,12 @@
 """Выгрузка QuestionAnswer для ручной аннотации.
 
-Создаёт CSV файл с вопросами и ответами для последующей ручной разметки.
+Создаёт JSON файл с вопросами и ответами для последующей ручной разметки.
 """
 
 from __future__ import annotations
 
 import argparse
-import csv
+import json
 import logging
 from datetime import datetime
 from pathlib import Path
@@ -24,13 +24,13 @@ from qa.database import QuestionAnswer, create_engine
 logger = logging.getLogger(__name__)
 
 
-ANNOTATION_FIELDS = [
-    ("answer_type", "Тип ответа: 1=пустой, 2=не найден, 3=ошибка, 4=нормальный"),
-    ("answer_relevance", "Релевантность ответа вопросу: 0=нет, 1=да, 2=частично"),
-    ("url_relevance", "Релевантность URL вопросу: 0=нет, 1=да, 2=частично"),
-    ("answer_url_relevance", "Релевантность ответа URL: 0=нет, 1=да, 2=частично"),
-    ("notes", "Заметки"),
-]
+ANNOTATION_FIELDS = {
+    "answer_type": "Тип ответа: 1=пустой, 2=не найден, 3=ошибка, 4=нормальный",
+    "answer_relevance": "Релевантность ответа вопросу: 0=нет, 1=да, 2=частично",
+    "url_relevance": "Релевантность URL вопросу: 0=нет, 1=да, 2=частично",
+    "answer_url_relevance": "Релевантность ответа URL: 0=нет, 1=да, 2=частично",
+    "notes": "Заметки",
+}
 
 
 def export_for_annotation(
@@ -38,7 +38,7 @@ def export_for_annotation(
     output_path: Path,
     limit: int | None = None,
 ) -> dict[str, Any]:
-    """Экспортировать QuestionAnswer для аннотации."""
+    """Экспортировать QuestionAnswer для аннотации в JSON."""
     with Session(engine) as session:
         query = (
             select(QuestionAnswer)
@@ -50,54 +50,42 @@ def export_for_annotation(
 
         rows = session.scalars(query).all()
 
-    fieldnames = [
-        "id",
-        "question",
-        "answer",
-        "confluence_url",
-        "score",
-        "user_id",
-        "platform",
-        "created_at",
-    ]
+    annotation_keys = list(ANNOTATION_FIELDS.keys())
 
-    for field_name, _ in ANNOTATION_FIELDS:
-        fieldnames.append(f"annotate_{field_name}")
+    items = []
+    for row in rows:
+        platform = "unknown"
+        if row.user:
+            if row.user.vk_id:
+                platform = "vk"
+            elif row.user.telegram_id:
+                platform = "telegram"
+
+        item = {
+            "id": row.id,
+            "question": row.question or "",
+            "answer": row.answer or "",
+            "confluence_url": row.confluence_url or "",
+            "score": row.score if row.score is not None else None,
+            "user_id": row.user_id,
+            "platform": platform,
+            "created_at": row.created_at.isoformat() if row.created_at else None,
+        }
+
+        for key in annotation_keys:
+            item[f"annotate_{key}"] = None
+
+        items.append(item)
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(
+        json.dumps(items, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
 
-    with open(output_path, "w", encoding="utf-8", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=fieldnames)
-        writer.writeheader()
-
-        for row in rows:
-            platform = "unknown"
-            if row.user:
-                if row.user.vk_id:
-                    platform = "vk"
-                elif row.user.telegram_id:
-                    platform = "telegram"
-
-            data = {
-                "id": row.id,
-                "question": row.question or "",
-                "answer": row.answer or "",
-                "confluence_url": row.confluence_url or "",
-                "score": row.score if row.score is not None else "",
-                "user_id": row.user_id,
-                "platform": platform,
-                "created_at": row.created_at.isoformat() if row.created_at else "",
-            }
-
-            for field_name, _ in ANNOTATION_FIELDS:
-                data[f"annotate_{field_name}"] = ""
-
-            writer.writerow(data)
-
-    logger.info("Экспортировано %d вопросов в %s", len(rows), output_path)
+    logger.info("Экспортировано %d вопросов в %s", len(items), output_path)
 
     return {
-        "total_rows": len(rows),
+        "total_rows": len(items),
         "output_path": str(output_path),
     }
 
@@ -116,13 +104,13 @@ def main() -> None:
         "--output",
         type=str,
         default=None,
-        help="Путь для CSV файла (по умолчанию data/annotation_dataset_YYYYMMDD_HHMMSS.csv)",
+        help="Путь для JSON файла (по умолчанию benchmarks/data/annotation_YYYYMMDD_HHMMSS.json)",
     )
     args = parser.parse_args()
 
     if args.output is None:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        args.output = f"benchmarks/data/annotation_dataset_{timestamp}.csv"
+        args.output = f"benchmarks/data/annotation_{timestamp}.json"
 
     logging.basicConfig(
         level=logging.INFO,
@@ -136,7 +124,7 @@ def main() -> None:
     print(f"  Всего вопросов: {result['total_rows']}")
     print(f"  Файл: {result['output_path']}")
     print("\nПоля для аннотации:")
-    for field_name, description in ANNOTATION_FIELDS:
+    for field_name, description in ANNOTATION_FIELDS.items():
         print(f"  - {field_name}: {description}")
 
 

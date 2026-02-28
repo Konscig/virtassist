@@ -6,7 +6,6 @@
 from __future__ import annotations
 
 import argparse
-import csv
 import json
 import logging
 from collections import Counter
@@ -32,8 +31,7 @@ RELEVANCE_MAP = {
 def analyze_annotated_dataset(input_path: Path) -> dict[str, Any]:
     """Подсчитать аналитику на основе размеченного датасета."""
     with open(input_path, "r", encoding="utf-8") as f:
-        reader = csv.DictReader(f)
-        rows = list(reader)
+        rows = json.load(f)
 
     total = len(rows)
 
@@ -48,10 +46,10 @@ def analyze_annotated_dataset(input_path: Path) -> dict[str, Any]:
     normal_answers = 0
 
     for row in rows:
-        at = row.get("annotate_answer_type", "").strip()
-        ar = row.get("annotate_answer_relevance", "").strip()
-        ur = row.get("annotate_url_relevance", "").strip()
-        aur = row.get("annotate_answer_url_relevance", "").strip()
+        at = str(row.get("annotate_answer_type", "")).strip()
+        ar = str(row.get("annotate_answer_relevance", "")).strip()
+        ur = str(row.get("annotate_url_relevance", "")).strip()
+        aur = str(row.get("annotate_answer_url_relevance", "")).strip()
 
         if at:
             answer_types[at] += 1
@@ -72,18 +70,20 @@ def analyze_annotated_dataset(input_path: Path) -> dict[str, Any]:
             answer_url_relevances[aur] += 1
 
     has_answer = sum(
-        1 for r in rows if r.get("annotate_answer_type", "").strip() in ("3", "4")
+        1 for r in rows if str(r.get("annotate_answer_type", "")).strip() in ("3", "4")
     )
     real_answer_rate = has_answer / total if total else 0
 
     relevant_answers = sum(
-        1 for r in rows if r.get("annotate_answer_relevance", "").strip() == "1"
+        1 for r in rows if str(r.get("annotate_answer_relevance", "")).strip() == "1"
     )
     relevant_urls = sum(
-        1 for r in rows if r.get("annotate_url_relevance", "").strip() == "1"
+        1 for r in rows if str(r.get("annotate_url_relevance", "")).strip() == "1"
     )
     relevant_answer_url = sum(
-        1 for r in rows if r.get("annotate_answer_url_relevance", "").strip() == "1"
+        1
+        for r in rows
+        if str(r.get("annotate_answer_url_relevance", "")).strip() == "1"
     )
 
     by_platform = {}
@@ -96,8 +96,8 @@ def analyze_annotated_dataset(input_path: Path) -> dict[str, Any]:
                 "relevant": 0,
             }
         by_platform[platform]["total"] += 1
-        at = row.get("annotate_answer_type", "").strip()
-        ar = row.get("annotate_answer_relevance", "").strip()
+        at = str(row.get("annotate_answer_type", "")).strip()
+        ar = str(row.get("annotate_answer_relevance", "")).strip()
         if at in ("3", "4"):
             by_platform[platform]["has_answer"] += 1
         if ar == "1":
@@ -137,8 +137,8 @@ def main() -> None:
     parser.add_argument(
         "--input",
         type=str,
-        default="benchmarks/data/annotation_dataset.csv",
-        help="Путь к размеченному CSV файлу",
+        default="benchmarks/data/annotation_dataset.json",
+        help="Путь к размеченному JSON файлу",
     )
     parser.add_argument(
         "--output",
