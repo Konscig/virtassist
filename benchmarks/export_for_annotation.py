@@ -79,45 +79,6 @@ def export_for_annotation(
         for key in annotation_keys:
             item[f"annotate_{key}"] = None
 
-        question_lower = (row.question or "").lower()
-        small_talk_patterns = [
-            "привет",
-            "здравствуй",
-            "hi",
-            "hello",
-            "hey",
-            "как дела",
-            "как ты",
-            "как жизнь",
-            "what's up",
-            "пока",
-            "до свидания",
-            "bye",
-            "до встречи",
-            "спасибо",
-            "thank",
-            "thanks",
-            "кто ты",
-            "что ты",
-            "ты кто",
-            "погода",
-            "какой сегодня день",
-            "сколько времени",
-            "который час",
-            "просто",
-            "да",
-            "нет",
-        ]
-        is_small_talk = (
-            any(pattern in question_lower for pattern in small_talk_patterns)
-            and len(question_lower) < 50
-        )
-
-        if is_small_talk:
-            item["annotate_is_small_talk"] = "1"
-        else:
-            item["annotate_is_small_talk"] = "0"
-
         if not answer:
             item["annotate_answer_type"] = "1"
             item["annotate_answer_relevance"] = "0"
