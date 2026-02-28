@@ -80,6 +80,7 @@ def export_for_annotation(
 
         if not answer:
             item["annotate_answer_type"] = "1"
+            item["annotate_answer_url_relevance"] = "0"
 
         if not confluence_url:
             item["annotate_has_source"] = "0"
