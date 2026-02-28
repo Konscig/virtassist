@@ -8,6 +8,7 @@ from __future__ import annotations
 import argparse
 import csv
 import logging
+from datetime import datetime
 from pathlib import Path
 import sys
 from typing import Any
@@ -114,10 +115,14 @@ def main() -> None:
     parser.add_argument(
         "--output",
         type=str,
-        default="data/annotation_dataset.csv",
-        help="Путь для CSV файла (относительно директории запуска)",
+        default=None,
+        help="Путь для CSV файла (по умолчанию data/annotation_dataset_YYYYMMDD_HHMMSS.csv)",
     )
     args = parser.parse_args()
+
+    if args.output is None:
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        args.output = f"data/annotation_dataset_{timestamp}.csv"
 
     logging.basicConfig(
         level=logging.INFO,
