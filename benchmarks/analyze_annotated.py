@@ -137,7 +137,7 @@ def main() -> None:
     parser.add_argument(
         "--input",
         type=str,
-        default="benchmarks/data/annotation_dataset.csv",
+        default="data/annotation_dataset.csv",
         help="Путь к размеченному CSV файлу",
     )
     parser.add_argument(

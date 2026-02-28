@@ -114,8 +114,8 @@ def main() -> None:
     parser.add_argument(
         "--output",
         type=str,
-        default="benchmarks/data/annotation_dataset.csv",
-        help="Путь для CSV файла",
+        default="data/annotation_dataset.csv",
+        help="Путь для CSV файла (относительно директории запуска)",
     )
     args = parser.parse_args()
 

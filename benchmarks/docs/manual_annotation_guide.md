@@ -100,58 +100,21 @@ Real user датасет используется для анализа реал
 
 ### Экспорт вопросов для аннотации
 
+Запускать из корневой директории проекта:
+
 ```bash
 # Выгрузка всех QuestionAnswer из БД в CSV
-cd benchmarks
-python export_for_annotation.py
+uv run python benchmarks/export_for_annotation.py
 ```
 
-По умолчанию создаётся файл `benchmarks/data/annotation_dataset.csv`.
-
-### Структура CSV
-
-| Колонка | Описание |
-|---------|----------|
-| `id` | ID записи в БД |
-| `question` | Вопрос пользователя |
-| `answer` | Ответ бота |
-| `confluence_url` | Ссылка на источник |
-| `score` | Оценка пользователя (если есть) |
-| `user_id` | ID пользователя |
-| `platform` | Платформа (vk/telegram) |
-| `created_at` | Дата создания |
-
-### Поля для аннотации (Real User)
-
-| Поле | Значения | Описание |
-|------|----------|----------|
-| `annotate_answer_type` | 1, 2, 3, 4 | Тип ответа |
-| `annotate_answer_relevance` | 0, 1, 2 | Ответ релевантен вопросу |
-| `annotate_url_relevance` | 0, 1, 2 | URL релевантен вопросу |
-| `annotate_answer_url_relevance` | 0, 1, 2 | Ответ релевантен URL |
-| `annotate_notes` | текст | Заметки |
-
-#### Расшифровка значений
-
-**answer_type:**
-- `1` — Пустой (answer пустой)
-- `2` — Ответ не найден (бот не дал ответ)
-- `3` — Ошибка (есть URL, но ответ некорректный)
-- `4` — Нормальный ответ
-
-**relevance (answer_relevance, url_relevance, answer_url_relevance):**
-- `0` — Нет (не релевантно)
-- `1` — Да (релевантно)
-- `2` — Частично
+По умолчанию создаётся файл `data/annotation_dataset.csv`.
 
 ### Подсчёт аналитики
 
 После разметки CSV запустите анализ:
 
 ```bash
-python analyze_annotated.py \
-    --input benchmarks/reports/annotation_dataset.csv \
-    --output benchmarks/reports/annotation_analysis.json
+uv run python benchmarks/analyze_annotated.py
 ```
 
 ### Результаты аналитики
