@@ -8,12 +8,13 @@
 
 1. **Synthetic dataset** — сгенерирован из чанков через LLM
 2. **Manual dataset** — вручную аннотированный synthetic датасет
+3. **Real dataset** — реальные вопросы пользователей из БД
 
 ---
 
-## Генерация датасета
+## 1. Аннотация Synthetic Датасета
 
-### Режимы генерации
+### Генерация датасета
 
 ```bash
 # Synthetic — вопросы генерируются из чанков
@@ -43,15 +44,6 @@ uv run python benchmarks/generate_dataset.py \
 }
 ```
 
-Поля:
-- `id` — уникальный идентификатор записи
-- `source` — источник данных (synthetic)
-- `question_source` — происхождение вопроса (synthetic/manual)
-
----
-
-## Ручная аннотация
-
 ### Экспорт для аннотации
 
 ```bash
@@ -61,9 +53,7 @@ uv run python benchmarks/generate_dataset.py \
     --output benchmarks/data/dataset_20260220_123456.json
 ```
 
-### Поля для аннотации
-
-При аннотации заполняются поля:
+### Поля для аннотации (Synthetic)
 
 | Поле | Тип | Описание |
 |------|-----|----------|
@@ -83,7 +73,7 @@ uv run python benchmarks/run_comprehensive_benchmark.py \
     --judge-eval-mode reasoned
 ```
 
-### Рекомендация по LLM Judge для аннотированного synthetic датасета
+### Рекомендация по LLM Judge для Synthetic
 
 Для вручную проверенного synthetic-датасета рекомендуемый режим:
 
@@ -102,17 +92,84 @@ uv run python benchmarks/run_comprehensive_benchmark.py \
     --consistency-runs 2
 ```
 
-Такой запуск повышает строгость оценки при работе с датасетом,
-проверенным доменным экспертом.
+---
+
+## 2. Аннотация Real User Датасета
+
+Real user датасет используется для анализа реального поведения пользователей и качества ответов бота.
+
+### Экспорт вопросов для аннотации
+
+```bash
+# Выгрузка всех QuestionAnswer из БД в CSV
+cd benchmarks
+python export_for_annotation.py
+```
+
+По умолчанию создаётся файл `benchmarks/reports/annotation_dataset.csv`.
+
+### Структура CSV
+
+| Колонка | Описание |
+|---------|----------|
+| `id` | ID записи в БД |
+| `question` | Вопрос пользователя |
+| `answer` | Ответ бота |
+| `confluence_url` | Ссылка на источник |
+| `score` | Оценка пользователя (если есть) |
+| `user_id` | ID пользователя |
+| `platform` | Платформа (vk/telegram) |
+| `created_at` | Дата создания |
+
+### Поля для аннотации (Real User)
+
+| Поле | Значения | Описание |
+|------|----------|----------|
+| `annotate_answer_type` | 1, 2, 3, 4 | Тип ответа |
+| `annotate_answer_relevance` | 0, 1, 2 | Ответ релевантен вопросу |
+| `annotate_url_relevance` | 0, 1, 2 | URL релевантен вопросу |
+| `annotate_answer_url_relevance` | 0, 1, 2 | Ответ релевантен URL |
+| `annotate_notes` | текст | Заметки |
+
+#### Расшифровка значений
+
+**answer_type:**
+- `1` — Пустой (answer пустой)
+- `2` — Ответ не найден (бот не дал ответ)
+- `3` — Ошибка (есть URL, но ответ некорректный)
+- `4` — Нормальный ответ
+
+**relevance (answer_relevance, url_relevance, answer_url_relevance):**
+- `0` — Нет (не релевантно)
+- `1` — Да (релевантно)
+- `2` — Частично
+
+### Подсчёт аналитики
+
+После разметки CSV запустите анализ:
+
+```bash
+python analyze_annotated.py \
+    --input benchmarks/reports/annotation_dataset.csv \
+    --output benchmarks/reports/annotation_analysis.json
+```
+
+### Результаты аналитики
+
+Скрипт выводит:
+
+- **Типы ответов**: распределение по категориям (пустой, не найден, ошибка, нормальный)
+- **Реальный показатель ответов**: процент вопросов с реальным ответом (типы 3+4)
+- **Релевантность**: процент релевантных ответов/URL/связок
+- **По платформам**: статистика по VK и Telegram
 
 ---
 
 ## Цикл работы
 
+### Synthetic Dataset
 ```
-1. Генерация датасета
-   │
-   └── synthetic (из чанков)
+1. Генерация датасета (synthetic)
    │
    ▼
 2. Экспорт для аннотации
@@ -129,8 +186,28 @@ uv run python benchmarks/run_comprehensive_benchmark.py \
    │
    ├── Tier 1 (Retrieval)
    ├── Tier 2 (Generation)
-   ├── Tier Judge (сравнение с человеком)
-   └── Tier UX (user experience)
+   ├── Tier Judge
+   └── Tier UX
+```
+
+### Real User Dataset
+```
+1. Экспорт из БД (export_for_annotation.py)
+   │
+   ▼
+2. Ручная разметка в CSV
+   │
+   ├── answer_type (1-4)
+   ├── answer_relevance (0-2)
+   ├── url_relevance (0-2)
+   └── answer_url_relevance (0-2)
+   │
+   ▼
+3. Подсчёт аналитики (analyze_annotated.py)
+   │
+   ├── Реальный % ответов
+   ├── Релевантность
+   └── Статистика по платформам
 ```
 
 ---
@@ -146,7 +223,7 @@ uv run python benchmarks/run_comprehensive_benchmark.py \
 
 ## Хранение аннотаций
 
-Аннотации хранятся в таблице БД `benchmark_annotations`:
+Аннотации синтетического датасета хранятся в таблице БД `benchmark_annotations`:
 
 ```sql
 SELECT * FROM benchmark_annotations 
