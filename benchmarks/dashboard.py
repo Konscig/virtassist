@@ -99,6 +99,16 @@ METRICS_BY_TIER = {
         "avg_chunks_per_topic",
         "top_k",
     ],
+    "user_analysis_metrics": [
+        "total_users",
+        "users_with_questions",
+        "users_without_questions",
+        "users_without_questions_rate",
+        "users_with_unanswered",
+        "users_with_unanswered_rate",
+        "total_questions",
+        "avg_questions_per_user",
+    ],
 }
 
 QUALITY_BASELINES = {
@@ -151,6 +161,24 @@ class RAGBenchmarkDashboard:
     def __init__(self):
         self.reports_dir = Path("benchmarks/reports")
         self.runs = self._load_runs()
+        self.users_data = self._load_users_data()
+
+    def _load_users_data(self) -> Dict:
+        """Загрузить данные анализа пользователей из JSON файла."""
+        users_data_path = self.reports_dir / "users_domain_analysis.json"
+
+        if not users_data_path.exists():
+            logger.info("Файл users_domain_analysis.json не найден, загрузка 0 данных")
+            return {}
+
+        try:
+            with open(users_data_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            logger.info("Загружены данные пользователей из users_domain_analysis.json")
+            return data
+        except Exception as e:
+            logger.warning("Ошибка загрузки users_domain_analysis.json: %s", e)
+            return {}
 
     def _load_runs(self) -> List[Dict]:
         """Загрузить запуски бенчмарков из JSON файла."""
@@ -309,6 +337,9 @@ class RAGBenchmarkDashboard:
 
             with gr.Tab("Domain Insights"):
                 self._create_domain_insights_tab()
+
+            with gr.Tab("User Analytics"):
+                self._create_user_analytics_tab()
 
             with gr.Tab("LLM Comparison"):
                 self._create_llm_comparison_tab()
@@ -1135,7 +1166,15 @@ class RAGBenchmarkDashboard:
         )
 
     def _create_domain_insights_tab(self):
+        """Создать вкладку анализа предметной области."""
+        import plotly.express as px
+        import plotly.graph_objects as go
+
         gr.Markdown("### Анализ предметной области на real-user данных")
+        gr.Markdown(
+            "**Внешние метрики** — метрики для оценки проблем в работе чат-бота"
+        )
+
         if not self.runs:
             gr.Markdown("Нет запусков для domain analysis.")
             return
@@ -1171,12 +1210,33 @@ class RAGBenchmarkDashboard:
                     pd.DataFrame(),
                 )
 
-            summary_text = (
-                f"**Всего вопросов:** `{metrics.get('total_questions', 0)}`\n"
-                f"\n**С ответами:** `{metrics.get('with_answers', 0)}`\n"
-                f"\n**Без ответов:** `{metrics.get('without_answers', 0)}`\n"
-                f"\n**Средняя длина вопроса:** `{_safe_float(metrics.get('avg_question_length')):.2f}`"
-            )
+            summary_parts = [
+                f"**Всего вопросов:** `{metrics.get('total_questions', 0)}`",
+                f"**С ответами:** `{metrics.get('with_answers', 0)}` "
+                f"({_safe_float(metrics.get('with_answers_rate')) * 100:.1f}%)",
+                f"**Без ответов:** `{metrics.get('without_answers', 0)}` "
+                f"({(1 - _safe_float(metrics.get('with_answers_rate'))) * 100:.1f}%)",
+                f"**Средняя длина вопроса:** "
+                f"`{_safe_float(metrics.get('avg_question_length')):.2f}`",
+            ]
+
+            users_data = self.users_data
+            if users_data:
+                summary_parts.extend(
+                    [
+                        "",
+                        "---",
+                        "### Пользователи",
+                        f"**Всего пользователей:** `{users_data.get('total_users', 0)}`",
+                        f"**Без вопросов:** `{users_data.get('users_without_questions', 0)}` "
+                        f"({_safe_float(users_data.get('users_without_questions_rate')) * 100:.1f}%)",
+                        f"**С безответными вопросами:** "
+                        f"`{users_data.get('users_with_unanswered', 0)}` "
+                        f"({_safe_float(users_data.get('users_with_unanswered_rate')) * 100:.1f}%)",
+                    ]
+                )
+
+            summary_text = "\n".join(summary_parts)
 
             score_distribution = metrics.get("score_distribution", {})
             score_df = pd.DataFrame(
@@ -1219,6 +1279,137 @@ class RAGBenchmarkDashboard:
             fn=build_domain_view,
             inputs=[run_selector],
             outputs=[summary, score_table, token_table],
+        )
+
+    def _create_user_analytics_tab(self):
+        """Создать вкладку анализа пользователей."""
+        import plotly.express as px
+        import plotly.graph_objects as go
+
+        gr.Markdown("### Анализ пользователей и их взаимодействия с чат-ботом")
+        gr.Markdown(
+            "**Внешние метрики** — метрики для оценки проблем в работе чат-бота"
+        )
+
+        users_data = self.users_data
+
+        if not users_data:
+            gr.Markdown(
+                "Нет данных об пользователях. Запустите `analyze_users_domain.py` "
+                "для сбора данных."
+            )
+            return
+
+        summary_text = (
+            f"**Всего пользователей:** `{users_data.get('total_users', 0)}`\n"
+            f"\n**С вопросами:** `{users_data.get('users_with_questions', 0)}`\n"
+            f"\n**Без вопросов:** `{users_data.get('users_without_questions', 0)}` "
+            f"({_safe_float(users_data.get('users_without_questions_rate')) * 100:.1f}%)\n"
+            f"\n**С безответными вопросами:** `{users_data.get('users_with_unanswered', 0)}` "
+            f"({_safe_float(users_data.get('users_with_unanswered_rate')) * 100:.1f}%)\n"
+            f"\n**Всего вопросов:** `{users_data.get('total_questions', 0)}`\n"
+            f"\n**Среднее число вопросов на пользователя:** "
+            f"`{_safe_float(users_data.get('avg_questions_per_user')):.2f}`"
+        )
+        gr.Markdown(summary_text)
+
+        gr.Markdown("### Распределение вопросов на пользователя")
+        qpu_dist = users_data.get("questions_per_user_distribution", {})
+        if qpu_dist:
+            qpu_df = pd.DataFrame(
+                [
+                    {"Количество вопросов": k, "Пользователей": v}
+                    for k, v in qpu_dist.items()
+                ]
+            )
+            qpu_fig = px.bar(
+                qpu_df,
+                x="Количество вопросов",
+                y="Пользователей",
+                title="Распределение вопросов на пользователя",
+            )
+            qpu_fig.update_xaxes(showgrid=True)
+            qpu_fig.update_yaxes(showgrid=True)
+            gr.Plot(value=qpu_fig)
+
+        gr.Markdown("### Пользователи по платформам")
+        platform_data = users_data.get("users_by_platform", {})
+        if platform_data:
+            platform_df = pd.DataFrame(
+                [{"Платформа": k, "Пользователей": v} for k, v in platform_data.items()]
+            )
+            platform_fig = px.pie(
+                platform_df,
+                names="Платформа",
+                values="Пользователей",
+                title="Распределение пользователей по платформам",
+            )
+            gr.Plot(value=platform_fig)
+
+        gr.Markdown("### Timeline: вопросы и пользователи по дням")
+        timeline = users_data.get("questions_timeline", [])
+        if timeline:
+            timeline_df = pd.DataFrame(timeline)
+
+            with gr.Row():
+                chart_type = gr.Radio(
+                    choices=["questions", "users", "both"],
+                    value="both",
+                    label="Отобразить",
+                )
+
+            def build_timeline_chart(chart_sel: str):
+                fig = go.Figure()
+
+                if chart_sel in ("questions", "both"):
+                    fig.add_trace(
+                        go.Scatter(
+                            x=timeline_df["date"],
+                            y=timeline_df["questions_count"],
+                            mode="lines+markers",
+                            name="Вопросы",
+                            line=dict(width=2),
+                            marker=dict(size=8),
+                        )
+                    )
+
+                if chart_sel in ("users", "both"):
+                    fig.add_trace(
+                        go.Scatter(
+                            x=timeline_df["date"],
+                            y=timeline_df["unique_users"],
+                            mode="lines+markers",
+                            name="Уникальные пользователи",
+                            line=dict(width=2, dash="dot"),
+                            marker=dict(size=8),
+                        )
+                    )
+
+                fig.update_layout(
+                    title="Вопросы и пользователи по дням",
+                    xaxis_title="Дата",
+                    yaxis_title="Количество",
+                    template="plotly_white",
+                    legend=dict(orientation="h"),
+                    height=400,
+                )
+                fig.update_xaxes(showgrid=True)
+                fig.update_yaxes(showgrid=True)
+                return fig
+
+            timeline_plot = gr.Plot(value=build_timeline_chart("both"))
+
+            chart_type.change(
+                fn=build_timeline_chart,
+                inputs=[chart_type],
+                outputs=[timeline_plot],
+            )
+
+        gr.Markdown(
+            "### Безответные вопросы — ключевая проблема\n\n"
+            "Процент пользователей с безответными вопросами показывает, "
+            "какая доля пользователей не получила ответа на свои вопросы. "
+            "Это один из ключевых показателей для постановки проблемы."
         )
 
     def _extract_model_run_rows(self) -> pd.DataFrame:
