@@ -1,6 +1,7 @@
 """Автоматическая аннотация датасета с помощью LLM.
 
 Запускает LLM судью для автоматической разметки вопросов/ответов.
+Использует те же настройки что и llm_judge: BENCHMARKS_JUDGE_*
 """
 
 from __future__ import annotations
@@ -12,8 +13,6 @@ import os
 import time
 from pathlib import Path
 from typing import Any
-
-from openai import OpenAI
 
 logger = logging.getLogger(__name__)
 
@@ -78,9 +77,29 @@ USER_PROMPT = """Вопрос пользователя:
 {{"answer_type": "3", "has_source": "1", "url_relevance": "0", "answer_url_relevance": "0", "is_small_talk": "0"}}"""
 
 
-def call_llm(client: OpenAI, model: str, question: str, answer: str, confluence_url: str) -> dict | None:
-    """Вызвать LLM для аннота."""
-    user_text = USER_PROMPTции одного вопроса.format(
+def get_client():
+    """Создать OpenAI-совместимый клиент."""
+    api_key = os.getenv("BENCHMARKS_JUDGE_API_KEY")
+    base_url = os.getenv("BENCHMARKS_JUDGE_BASE_URL", "https://api.deepseek.com")
+
+    if not api_key:
+        raise ValueError("Не задан ключ API. Укажите BENCHMARKS_JUDGE_API_KEY")
+
+    from openai import OpenAI
+
+    return OpenAI(api_key=api_key, base_url=base_url)
+
+
+def get_model() -> str:
+    """Получить название модели."""
+    return os.getenv("BENCHMARKS_JUDGE_MODEL", "deepseek-chat")
+
+
+def call_llm(
+    client, model: str, question: str, answer: str, confluence_url: str
+) -> dict | None:
+    """Вызвать LLM для аннотации."""
+    user_text = USER_PROMPT.format(
         question=question[:1000],
         answer=answer[:2000] if answer else "(пусто)",
         confluence_url=confluence_url if confluence_url else "(нет)",
@@ -115,19 +134,12 @@ def has_url_in_text(text: str) -> bool:
 def auto_annotate_dataset(
     input_path: Path,
     output_path: Path,
-    model: str = "gpt-4o-mini",
-    api_key: str | None = None,
     batch_size: int = 10,
     delay: float = 0.5,
 ) -> dict[str, Any]:
     """Автоматически аннотировать датасет с помощью LLM."""
-    if api_key is None:
-        api_key = os.environ.get("OPENAI_API_KEY")
-
-    if not api_key:
-        raise ValueError("OPENAI_API_KEY not set")
-
-    client = OpenAI(api_key=api_key)
+    client = get_client()
+    model = get_model()
 
     with open(input_path, "r", encoding="utf-8") as f:
         items = json.load(f)
@@ -150,7 +162,9 @@ def auto_annotate_dataset(
             item["annotate_answer_type"] = result.get("answer_type", "2")
             item["annotate_has_source"] = result.get("has_source", "0")
             item["annotate_url_relevance"] = result.get("url_relevance", "0")
-            item["annotate_answer_url_relevance"] = result.get("answer_url_relevance", "0")
+            item["annotate_answer_url_relevance"] = result.get(
+                "answer_url_relevance", "0"
+            )
             item["annotate_is_small_talk"] = result.get("is_small_talk", "0")
             annotated += 1
         else:
@@ -162,7 +176,9 @@ def auto_annotate_dataset(
         time.sleep(delay)
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text(json.dumps(items, ensure_ascii=False, indent=2), encoding="utf-8")
+    output_path.write_text(
+        json.dumps(items, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
 
     return {
         "total": total,
@@ -187,12 +203,6 @@ def main() -> None:
         type=str,
         default=None,
         help="Путь к выходному JSON файлу",
-    )
-    parser.add_argument(
-        "--model",
-        type=str,
-        default="gpt-4o-mini",
-        help="Модель для аннотации",
     )
     parser.add_argument(
         "--batch-size",
@@ -220,12 +230,11 @@ def main() -> None:
 
     if args.output is None:
         stem = input_path.stem
-        args.output = f"{stem}_annotated.json"
+        args.output = f"{input_path.parent}/{stem}_annotated.json"
 
     result = auto_annotate_dataset(
         input_path=input_path,
         output_path=Path(args.output),
-        model=args.model,
         batch_size=args.batch_size,
         delay=args.delay,
     )

@@ -2,7 +2,12 @@
 
 ## Обзор
 
-Скрипт `auto_annotate.py` использует LLM (например, GPT-4o-mini) для автоматической аннотации вопросов и ответов из базы данных. Это позволяет быстро разметить большие объёмы данных без ручной работы.
+Скрипт `auto_annotate.py` использует LLM для автоматической аннотации вопросов и ответов из базы данных.
+
+Использует те же настройки что и `llm_judge`:
+- `BENCHMARKS_JUDGE_API_KEY` — API ключ
+- `BENCHMARKS_JUDGE_BASE_URL` — URL API (по умолчанию DeepSeek)
+- `BENCHMARKS_JUDGE_MODEL` — модель (по умолчанию `qwen-turbo`)
 
 ---
 
@@ -20,11 +25,12 @@ uv run python export_for_annotation.py
 
 ```bash
 uv run python auto_annotate.py \
-    --input benchmarks/data/dataset_annotation_20260228_123456.json
+    --input benchmarks/data/dataset_annotation_20260228_193413.json
 ```
 
 По умолчанию:
-- Модель: `gpt-4o-mini`
+- Модель: из `BENCHMARKS_JUDGE_MODEL` (по умолчанию `qwen-turbo`)
+- API: из `BENCHMARKS_JUDGE_BASE_URL` (DeepSeek)
 - Выходной файл: `{input_name}_annotated.json`
 - Задержка между запросами: 0.5 сек
 
@@ -32,7 +38,7 @@ uv run python auto_annotate.py \
 
 ```bash
 uv run python analyze_annotated.py \
-    --input benchmarks/data/dataset_annotation_20260228_123456_annotated.json
+    --input benchmarks/data/dataset_annotation_20260228_193413_annotated.json
 ```
 
 ---
@@ -43,9 +49,18 @@ uv run python analyze_annotated.py \
 |-----------|----------|---------------|
 | `--input` | Путь к входному JSON | (обязательно) |
 | `--output` | Путь к выходному JSON | `{input}_annotated.json` |
-| `--model` | Модель для аннотации | `gpt-4o-mini` |
 | `--batch-size` | Логировать каждые N вопросов | 10 |
 | `--delay` | Задержка между запросами (сек) | 0.5 |
+
+---
+
+## Переменные окружения
+
+| Переменная | Описание | По умолчанию |
+|------------|----------|---------------|
+| `BENCHMARKS_JUDGE_API_KEY` | API ключ | (обязательно) |
+| `BENCHMARKS_JUDGE_BASE_URL` | URL API | `https://api.deepseek.com` |
+| `BENCHMARKS_JUDGE_MODEL` | Модель | `qwen-turbo` |
 
 ---
 
@@ -77,43 +92,3 @@ LLM проставляет следующие поля:
 - **is_small_talk=0**: вопрос по делу
 - **is_small_talk=1**: small talk (привет, пока, как дела)
 - **is_small_talk=2**: про Вопрошалыча (кто ты, что умеешь)
-
----
-
-## Примеры использования
-
-### Использовать другую модель
-
-```bash
-uv run python auto_annotate.py \
-    --input benchmarks/data/dataset_annotation.json \
-    --model gpt-4o
-```
-
-### Указать выходной файл
-
-```bash
-uv run python auto_annotate.py \
-    --input benchmarks/data/dataset_annotation.json \
-    --output benchmarks/data/my_annotated.json
-```
-
-### Уменьшить задержку (для быстрых API)
-
-```bash
-uv run python auto_annotate.py \
-    --input benchmarks/data/dataset_annotation.json \
-    --delay 0.1
-```
-
----
-
-## Требования
-
-- `OPENAI_API_KEY` в переменных окружения
-- Доступ к интернету для запросов к OpenAI
-
-Пример:
-```bash
-export OPENAI_API_KEY=sk-...
-```
