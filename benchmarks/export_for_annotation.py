@@ -61,11 +61,14 @@ def export_for_annotation(
             elif row.user.telegram_id:
                 platform = "telegram"
 
+        answer = row.answer or ""
+        confluence_url = row.confluence_url or ""
+
         item = {
             "id": row.id,
             "question": row.question or "",
-            "answer": row.answer or "",
-            "confluence_url": row.confluence_url or "",
+            "answer": answer,
+            "confluence_url": confluence_url,
             "score": row.score if row.score is not None else None,
             "user_id": row.user_id,
             "platform": platform,
@@ -74,6 +77,15 @@ def export_for_annotation(
 
         for key in annotation_keys:
             item[f"annotate_{key}"] = None
+
+        if not answer:
+            item["annotate_answer_type"] = "1"
+            item["annotate_answer_relevance"] = "0"
+            item["annotate_answer_url_relevance"] = "0"
+
+        if not confluence_url:
+            item["annotate_url_relevance"] = "0"
+            item["annotate_answer_url_relevance"] = "0"
 
         items.append(item)
 
