@@ -1031,6 +1031,7 @@ class RAGBenchmarkDashboard:
                         title=f"UMAP 2D: {len(embeddings)} embeddings",
                     )
 
+                fig.update_layout(height=600)
                 return fig
             except Exception as error:
                 import traceback
@@ -1220,23 +1221,7 @@ class RAGBenchmarkDashboard:
                 f"`{_safe_float(metrics.get('avg_question_length')):.2f}`",
             ]
 
-            users_data = self.users_data
-            if users_data:
-                summary_parts.extend(
-                    [
-                        "",
-                        "---",
-                        "### Пользователи",
-                        f"**Всего пользователей:** `{users_data.get('total_users', 0)}`",
-                        f"**Без вопросов:** `{users_data.get('users_without_questions', 0)}` "
-                        f"({_safe_float(users_data.get('users_without_questions_rate')) * 100:.1f}%)",
-                        f"**С безответными вопросами:** "
-                        f"`{users_data.get('users_with_unanswered', 0)}` "
-                        f"({_safe_float(users_data.get('users_with_unanswered_rate')) * 100:.1f}%)",
-                    ]
-                )
-
-            summary_text = "\n".join(summary_parts)
+            summary_text = "\n\n".join(summary_parts)
 
             score_distribution = metrics.get("score_distribution", {})
             score_df = pd.DataFrame(
@@ -1265,12 +1250,12 @@ class RAGBenchmarkDashboard:
             headers=["Score", "Count"],
         )
 
-        gr.Markdown("### Топ токенов в вопросах (топ-50)")
+        gr.Markdown("### Топ токенов в вопросах (топ-200)")
         token_table = gr.Dataframe(
             value=initial_tokens,
             interactive=False,
             wrap=True,
-            max_height=400,
+            max_height=600,
             column_widths=["50%", "50%"],
             headers=["Токен", "Частота"],
         )
@@ -1300,17 +1285,19 @@ class RAGBenchmarkDashboard:
             )
             return
 
-        summary_text = (
-            f"**Всего пользователей:** `{users_data.get('total_users', 0)}`\n"
-            f"\n**С вопросами:** `{users_data.get('users_with_questions', 0)}`\n"
-            f"\n**Без вопросов:** `{users_data.get('users_without_questions', 0)}` "
-            f"({_safe_float(users_data.get('users_without_questions_rate')) * 100:.1f}%)\n"
-            f"\n**С безответными вопросами:** `{users_data.get('users_with_unanswered', 0)}` "
-            f"({_safe_float(users_data.get('users_with_unanswered_rate')) * 100:.1f}%)\n"
-            f"\n**Всего вопросов:** `{users_data.get('total_questions', 0)}`\n"
-            f"\n**Среднее число вопросов на пользователя:** "
-            f"`{_safe_float(users_data.get('avg_questions_per_user')):.2f}`"
-        )
+        summary_parts = [
+            f"**Всего пользователей:** `{users_data.get('total_users', 0)}`",
+            f"**С вопросами:** `{users_data.get('users_with_questions', 0)}`",
+            f"**Без вопросов:** `{users_data.get('users_without_questions', 0)}` "
+            f"({_safe_float(users_data.get('users_without_questions_rate')) * 100:.1f}%)",
+            f"**С хотя бы одним безответным вопросом:** `{users_data.get('users_with_unanswered', 0)}` "
+            f"({_safe_float(users_data.get('users_with_unanswered_rate')) * 100:.1f}%)",
+            f"**Полностью без ответов (ни на один вопрос):** `{users_data.get('users_with_only_unanswered', 0)}`",
+            f"**Всего вопросов (в анализе):** `{users_data.get('total_questions', 0)}`",
+            f"**Среднее число вопросов на пользователя:** "
+            f"`{_safe_float(users_data.get('avg_questions_per_user')):.2f}`",
+        ]
+        summary_text = "\n\n".join(summary_parts)
         gr.Markdown(summary_text)
 
         gr.Markdown("### Распределение вопросов на пользователя")
@@ -1346,71 +1333,100 @@ class RAGBenchmarkDashboard:
             )
             gr.Plot(value=platform_fig)
 
-        gr.Markdown("### Timeline: вопросы и пользователи по дням")
+        gr.Markdown("### Timeline: вопросы по дням")
         timeline = users_data.get("questions_timeline", [])
         if timeline:
             timeline_df = pd.DataFrame(timeline)
 
             with gr.Row():
                 chart_type = gr.Radio(
-                    choices=["questions", "users", "both"],
-                    value="both",
+                    choices=["Все вопросы", "По платформам", "Пользователи"],
+                    value="По платформам",
                     label="Отобразить",
                 )
 
             def build_timeline_chart(chart_sel: str):
                 fig = go.Figure()
 
-                if chart_sel in ("questions", "both"):
+                if chart_sel == "Все вопросы":
                     fig.add_trace(
                         go.Scatter(
                             x=timeline_df["date"],
                             y=timeline_df["questions_count"],
                             mode="lines+markers",
-                            name="Вопросы",
+                            name="Все вопросы",
                             line=dict(width=2),
-                            marker=dict(size=8),
+                            marker=dict(size=6),
                         )
                     )
-
-                if chart_sel in ("users", "both"):
+                elif chart_sel == "По платформам":
+                    if "vk_questions" in timeline_df.columns:
+                        fig.add_trace(
+                            go.Scatter(
+                                x=timeline_df["date"],
+                                y=timeline_df["vk_questions"],
+                                mode="lines+markers",
+                                name="VK",
+                                line=dict(width=2),
+                                marker=dict(size=6),
+                            )
+                        )
+                    if "telegram_questions" in timeline_df.columns:
+                        fig.add_trace(
+                            go.Scatter(
+                                x=timeline_df["date"],
+                                y=timeline_df["telegram_questions"],
+                                mode="lines+markers",
+                                name="Telegram",
+                                line=dict(width=2),
+                                marker=dict(size=6),
+                            )
+                        )
+                    fig.add_trace(
+                        go.Scatter(
+                            x=timeline_df["date"],
+                            y=timeline_df["questions_count"],
+                            mode="lines+markers",
+                            name="Всего",
+                            line=dict(width=2, dash="dot"),
+                            marker=dict(size=6),
+                        )
+                    )
+                else:
                     fig.add_trace(
                         go.Scatter(
                             x=timeline_df["date"],
                             y=timeline_df["unique_users"],
                             mode="lines+markers",
                             name="Уникальные пользователи",
-                            line=dict(width=2, dash="dot"),
-                            marker=dict(size=8),
+                            line=dict(width=2),
+                            marker=dict(size=6),
                         )
                     )
 
                 fig.update_layout(
-                    title="Вопросы и пользователи по дням",
+                    title="Вопросы по дням",
                     xaxis_title="Дата",
                     yaxis_title="Количество",
                     template="plotly_white",
                     legend=dict(orientation="h"),
-                    height=400,
+                    height=450,
                 )
-                fig.update_xaxes(showgrid=True)
+                fig.update_xaxes(
+                    showgrid=True,
+                    tickangle=-45,
+                    dtick="D7",
+                )
                 fig.update_yaxes(showgrid=True)
                 return fig
 
-            timeline_plot = gr.Plot(value=build_timeline_chart("both"))
+            timeline_plot = gr.Plot(value=build_timeline_chart("По платформам"))
 
             chart_type.change(
                 fn=build_timeline_chart,
                 inputs=[chart_type],
                 outputs=[timeline_plot],
             )
-
-        gr.Markdown(
-            "### Безответные вопросы — ключевая проблема\n\n"
-            "Процент пользователей с безответными вопросами показывает, "
-            "какая доля пользователей не получила ответа на свои вопросы. "
-            "Это один из ключевых показателей для постановки проблемы."
-        )
 
     def _extract_model_run_rows(self) -> pd.DataFrame:
         """Нормализовать model_runs из benchmark_runs в табличный формат."""

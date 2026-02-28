@@ -34,6 +34,15 @@ def analyze_users_domain(engine: Engine, limit: int = 5000) -> dict[str, Any]:
         users_with_questions = len(user_ids_with_questions)
         users_without_questions = total_users - users_with_questions
 
+        total_questions_real = (
+            session.scalar(
+                select(func.count(QuestionAnswer.id)).where(
+                    QuestionAnswer.question.isnot(None)
+                )
+            )
+            or 0
+        )
+
         all_questions = session.scalars(
             select(QuestionAnswer)
             .where(QuestionAnswer.question.isnot(None))
@@ -43,13 +52,11 @@ def analyze_users_domain(engine: Engine, limit: int = 5000) -> dict[str, Any]:
 
         questions_by_user = Counter(qa.user_id for qa in all_questions)
         questions_per_user_dist = {}
-        for count in range(1, 6):
+        max_questions = max(questions_by_user.values()) if questions_by_user else 0
+        for count in range(1, max_questions + 1):
             questions_per_user_dist[str(count)] = sum(
                 1 for c in questions_by_user.values() if c == count
             )
-        questions_per_user_dist["5+"] = sum(
-            1 for c in questions_by_user.values() if c >= 6
-        )
 
         avg_questions_per_user = (
             sum(questions_by_user.values()) / len(questions_by_user)
@@ -90,6 +97,8 @@ def analyze_users_domain(engine: Engine, limit: int = 5000) -> dict[str, Any]:
         days_range = (last_date - first_date).days + 1
         days_to_process = min(days_range, 90)
 
+        user_platform_cache = {}
+
         for i in range(days_to_process):
             day = first_date + timedelta(days=i)
             day_start = day.replace(hour=0, minute=0, second=0, microsecond=0)
@@ -103,16 +112,38 @@ def analyze_users_domain(engine: Engine, limit: int = 5000) -> dict[str, Any]:
             ).all()
 
             unique_users_day = set()
+            vk_count = 0
+            tg_count = 0
             for qid in day_questions:
                 qa = session.get(QuestionAnswer, qid)
                 if qa:
                     unique_users_day.add(qa.user_id)
+
+                    if qa.user_id not in user_platform_cache:
+                        user = session.get(User, qa.user_id)
+                        if user:
+                            if user.vk_id:
+                                user_platform_cache[qa.user_id] = "vk"
+                            elif user.telegram_id:
+                                user_platform_cache[qa.user_id] = "telegram"
+                            else:
+                                user_platform_cache[qa.user_id] = "unknown"
+                        else:
+                            user_platform_cache[qa.user_id] = "unknown"
+
+                    platform = user_platform_cache.get(qa.user_id, "unknown")
+                    if platform == "vk":
+                        vk_count += 1
+                    elif platform == "telegram":
+                        tg_count += 1
 
             questions_timeline.append(
                 {
                     "date": day_start.strftime("%Y-%m-%d"),
                     "questions_count": len(day_questions),
                     "unique_users": len(unique_users_day),
+                    "vk_questions": vk_count,
+                    "telegram_questions": tg_count,
                 }
             )
 
@@ -130,7 +161,8 @@ def analyze_users_domain(engine: Engine, limit: int = 5000) -> dict[str, Any]:
             else 0.0
         ),
         "users_with_only_unanswered": len(users_with_only_unanswered),
-        "total_questions": total_questions,
+        "total_questions": total_questions_real,
+        "total_questions_analyzed": total_questions,
         "avg_questions_per_user": avg_questions_per_user,
         "questions_per_user_distribution": questions_per_user_dist,
         "users_by_platform": users_by_platform,
