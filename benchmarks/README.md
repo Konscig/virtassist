@@ -124,7 +124,44 @@ make run-dashboard-local
 - `visualize_vector_space.py` — UMAP 2D/3D.
 - `analyze_chunk_utilization.py` — доля используемых чанков.
 - `analyze_topic_coverage.py` — покрытие тематических кластеров.
-- `analyze_real_users_domain.py` — доменная аналитика real-user корпуса.
+- `analyze_real_users_domain.py` — доменная аналитика real-user корпуса (вопросы).
+- `analyze_users_domain.py` — аналитика пользователей (пользователи, безответные вопросы, timeline).
+
+---
+
+## Внешние и внутренние метрики
+
+### Внешние метрики (External Metrics)
+
+Внешние метрики используются для демонстрации проблем в работе чат-бота:
+
+- **Анализ пользователей** (`analyze_users_domain.py`):
+  - Всего пользователей, пользователи без вопросов (%)
+  - Пользователи с безответными вопросами (%)
+  - Среднее число вопросов на пользователя
+  - Распределение вопросов по пользователям
+  - Timeline: вопросы и пользователи по дням (последние 90 дней)
+
+- **Анализ вопросов** (`analyze_real_users_domain.py`):
+  - Всего вопросов, вопросы с ответами / без ответов (%)
+  - Распределение оценок пользователей
+  - Топ токенов в вопросах
+
+### Внутренние метрики (Internal Metrics)
+
+Технические бенчмарки для глубокой оценки RAG-системы:
+
+- **Tier 0**: Embedding Quality — качество векторного пространства
+- **Tier 1**: Retrieval Quality — качество поиска релевантных чанков
+- **Tier 2**: Generation Quality — качество генерации ответов
+- **Tier 3**: End-to-End Quality — полный пайплайн
+- **Tier Judge**: LLM Judge оценки
+- **Tier Judge Pipeline**: Production Judge
+- **Tier UX**: UX метрики (cache, consistency)
+- **Utilization**: Использование чанков
+- **Topic Coverage**: Покрытие тем
+
+Подробнее см. [METRICS.md](docs/METRICS.md).
 
 ---
 
@@ -139,6 +176,7 @@ benchmarks/
 ├── utils/
 ├── analyze_chunk_utilization.py
 ├── analyze_real_users_domain.py
+├── analyze_users_domain.py
 ├── analyze_topic_coverage.py
 ├── dashboard.py
 ├── generate_dataset.py

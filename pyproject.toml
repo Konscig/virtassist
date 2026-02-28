@@ -28,6 +28,7 @@ requires-python = ">=3.12"
     "plotly",
     "umap-learn",
     "requests",
+    "uvicorn[standard]>=0.40.0",
 ]
 
 [tool.black]
