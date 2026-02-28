@@ -78,6 +78,8 @@ def export_for_annotation(
         for key in annotation_keys:
             item[f"annotate_{key}"] = None
 
+        item["annotate_is_small_talk"] = "0"
+
         if not answer:
             item["annotate_answer_type"] = "1"
             item["annotate_answer_url_relevance"] = "0"
