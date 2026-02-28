@@ -106,7 +106,7 @@ cd benchmarks
 python export_for_annotation.py
 ```
 
-По умолчанию создаётся файл `benchmarks/reports/annotation_dataset.csv`.
+По умолчанию создаётся файл `benchmarks/data/annotation_dataset.csv`.
 
 ### Структура CSV
 
