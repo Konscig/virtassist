@@ -122,7 +122,7 @@ def main() -> None:
 
     if args.output is None:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        args.output = f"data/annotation_dataset_{timestamp}.csv"
+        args.output = f"benchmarks/data/annotation_dataset_{timestamp}.csv"
 
     logging.basicConfig(
         level=logging.INFO,
