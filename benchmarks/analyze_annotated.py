@@ -86,6 +86,13 @@ def analyze_annotated_dataset(input_path: Path) -> dict[str, Any]:
         if str(r.get("annotate_answer_url_relevance", "")).strip() == "1"
     )
 
+    small_talk_count = sum(
+        1 for r in rows if str(r.get("annotate_is_small_talk", "")).strip() == "1"
+    )
+    relevant_questions = sum(
+        1 for r in rows if str(r.get("annotate_is_small_talk", "")).strip() == "0"
+    )
+
     by_platform = {}
     for row in rows:
         platform = row.get("platform", "unknown")
@@ -123,6 +130,11 @@ def analyze_annotated_dataset(input_path: Path) -> dict[str, Any]:
         "answer_url_relevance": {
             "relevant": relevant_answer_url,
             "relevant_percent": relevant_answer_url / total * 100 if total else 0,
+        },
+        "small_talk": {
+            "count": small_talk_count,
+            "percent": small_talk_count / total * 100 if total else 0,
+            "relevant_questions": relevant_questions,
         },
         "by_platform": by_platform,
     }
@@ -200,6 +212,13 @@ def main() -> None:
     aur = result["answer_url_relevance"]
     print(
         f"  Ответ релевантен URL:        {aur['relevant']:5d} ({aur['relevant_percent']:.1f}%)"
+    )
+
+    print("\n--- SMALL TALK ---")
+    st = result["small_talk"]
+    print(f"  Small talk (общие вопросы): {st['count']:5d} ({st['percent']:.1f}%)")
+    print(
+        f"  По делу:                    {st['relevant_questions']:5d} ({100 - st['percent']:.1f}%)"
     )
 
     print("\n--- ПО ПЛАТФОРМАМ ---")
