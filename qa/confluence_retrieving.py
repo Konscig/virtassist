@@ -1,5 +1,6 @@
 import logging
 from atlassian import Confluence
+
 from bs4 import BeautifulSoup
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_core.documents import Document

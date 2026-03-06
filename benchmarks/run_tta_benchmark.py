@@ -31,7 +31,7 @@ from benchmarks.tta_dataset_generator import (
     generate_tta_dataset_with_scenarios,
 )
 from sentence_transformers import SentenceTransformer
-from sqlalchemy import select, func
+from sqlalchemy import select, func, func
 
 logging.basicConfig(
     level=logging.INFO,

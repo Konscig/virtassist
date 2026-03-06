@@ -15,17 +15,12 @@ from sentence_transformers import SentenceTransformer
 from sqlalchemy import Engine, select
 from sqlalchemy.orm import Session
 
-try:
-    from qa.config import Config
-    from qa.database import Chunk, QuestionAnswer
-    from qa.confluence_retrieving import get_chunk
-    from qa.main import get_answer, assess_answer
-except ImportError:
-    from config import Config
-    from database import Chunk, QuestionAnswer
-    from confluence_retrieving import get_chunk
-    from main import get_answer, assess_answer
+from qa.config import Config
+from qa.database import Chunk, QuestionAnswer
+from qa.confluence_retrieving import get_chunk
+from qa.main import get_answer, assess_answer
 
+from benchmarks.utils.tta_metrics import TTAMetricsCollector, TTATimingContext
 from benchmarks.utils.tta_metrics import TTAMetricsCollector, TTATimingContext
 
 logger = logging.getLogger(__name__)

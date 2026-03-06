@@ -497,29 +497,31 @@ def generate_tta_dataset_with_scenarios(
                 }
             )
 
-        # Сценарий 4: template (score < 3, короткие <20)
-        template_questions = session.scalars(
-            select(QuestionAnswer)
-            .where(QuestionAnswer.score < 3)
-            .where(QuestionAnswer.confluence_url.isnot(None))
-            .where(QuestionAnswer.confluence_url != "")
-            .where(func.length(QuestionAnswer.question) < 20)
-            .limit(limit_per_scenario * 2)
-        ).all()
+        # Сценарий 4 (Template) убран по запросу — это edge case/fallback
 
-        random.shuffle(template_questions)
-        template_dataset = []
+        # Сценарий 3: chunk_not_found (длина >300, редкие слова)
+        chunk_not_found_questions = list(
+            session.scalars(
+                select(QuestionAnswer)
+                .where(QuestionAnswer.answer.isnot(None))
+                .where(func.length(QuestionAnswer.question) > 300)
+                .limit(limit_per_scenario * 2)
+            ).all()
+        )
 
-        for qa in template_questions[:limit_per_scenario]:
-            template_dataset.append(
+        random.shuffle(chunk_not_found_questions)
+        chunk_not_found_dataset = []
+
+        for qa in chunk_not_found_questions[:limit_per_scenario]:
+            chunk_not_found_dataset.append(
                 {
                     "id": qa.id,
                     "question": qa.question,
                     "ground_truth_answer": qa.answer,
-                    "confluence_url": qa.confluence_url,  # Есть URL чанка
+                    "confluence_url": None,
                     "score": qa.score,
                     "user_id": qa.user_id,
-                    "expected_scenario": "template",
+                    "expected_scenario": "chunk_not_found",
                     "created_at": qa.created_at.isoformat() if qa.created_at else None,
                 }
             )
