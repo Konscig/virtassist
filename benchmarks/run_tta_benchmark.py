@@ -27,6 +27,8 @@ from benchmarks.tta_dataset_generator import (
     generate_tta_dataset_with_chunks,
     save_tta_dataset,
     load_tta_dataset,
+    generate_tta_dataset_stratified,
+    generate_tta_dataset_with_scenarios,
 )
 from sentence_transformers import SentenceTransformer
 from sqlalchemy import select, func
@@ -66,7 +68,7 @@ def parse_arguments():
     )
     parser.add_argument(
         "--dataset-type",
-        choices=["simple", "with-chunks", "stratified"],
+        choices=["simple", "with-chunks", "stratified", "scenarios"],
         default="simple",
         help="Тип генерируемого датасета (default: simple)",
     )
@@ -75,6 +77,12 @@ def parse_arguments():
         type=float,
         default=0.3,
         help="Доля вопросов из кэша для stratified датасета (default: 0.3)",
+    )
+    parser.add_argument(
+        "--limit-per-scenario",
+        type=int,
+        default=10,
+        help="Количество вопросов на каждый сценарий (default: 10)",
     )
     parser.add_argument(
         "--output-dir",
@@ -86,6 +94,11 @@ def parse_arguments():
         "--save-dataset",
         action="store_true",
         help="Сохранить сгенерированный датасет",
+    )
+    parser.add_argument(
+        "--save-per-record",
+        action="store_true",
+        help="Сохранить датасет с метриками для каждой записи",
     )
     parser.add_argument(
         "--test-user-id",
@@ -182,10 +195,15 @@ def get_or_generate_dataset(
             limit=args.limit,
         )
     elif args.dataset_type == "stratified":
-        dataset = generate_tta_dataset_with_chunks(
+        dataset = generate_tta_dataset_stratified(
             engine,
             limit=args.limit,
             cache_ratio=args.cache_ratio,
+        )
+    elif args.dataset_type == "scenarios":
+        dataset = generate_tta_dataset_with_scenarios(
+            engine,
+            limit_per_scenario=args.limit_per_scenario,
         )
     else:
         raise ValueError(f"Неизвестный тип датасета: {args.dataset_type}")
@@ -273,16 +291,20 @@ def print_metrics(metrics: Dict[str, float], title: str = "Метрики"):
 
 
 def save_metrics(
-    metrics: Dict[str, float],
+    metrics: Dict[str, Any],
+    dataset: List[Dict[str, Any]],
     output_dir: str,
     mode: str,
+    save_per_record: bool = False,
 ) -> str:
     """Сохранить метрики в JSON файл.
 
     Args:
         metrics: Словарь с метриками
+        dataset: Датасет с метриками для каждой записи
         output_dir: Директория для сохранения
         mode: Режим бенчмарка
+        save_per_record: Сохранить ли датасет с метриками для каждой записи
 
     Returns:
         Путь к сохраненному файлу
@@ -298,11 +320,22 @@ def save_metrics(
         "metrics": metrics,
     }
 
+    if save_per_record:
+        per_record_path = (
+            f"{output_dir}/tta_benchmark_{mode}_{timestamp}_per_record.json"
+        )
+        Path(output_dir).mkdir(parents=True, exist_ok=True)
+
+        with open(per_record_path, "w", encoding="utf-8") as f:
+            json.dump(dataset, f, ensure_ascii=False, indent=2)
+
+        report["per_record_dataset"] = per_record_path
+        logger.info(f"✅ Датасет с метриками сохранен в {per_record_path}")
+
     with open(output_path, "w", encoding="utf-8") as f:
         json.dump(report, f, ensure_ascii=False, indent=2)
 
     logger.info(f"✅ Результаты сохранены в {output_path}")
-
     return output_path
 
 
@@ -345,10 +378,11 @@ def main():
         print_metrics(component_metrics, "Компонентные метрики")
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    output_path = save_metrics(all_metrics, args.output_dir, args.mode)
+    output_path = save_metrics(
+        all_metrics, dataset, args.output_dir, args.mode, args.save_per_record
+    )
 
     logger.info("✅ TTA бенчмарк завершен успешно!")
 
-
-if __name__ == "__main__":
-    main()
+    if __name__ == "__main__":
+        main()

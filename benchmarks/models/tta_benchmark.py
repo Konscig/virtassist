@@ -239,11 +239,25 @@ class TTABenchmark:
 
         for item in dataset:
             question = item["question"]
+            expected_scenario = item.get("expected_scenario", "unknown")
             ground_truth = item.get("ground_truth_answer", "")
-            final_answer = ""
-            final_url = None
 
             e2e_start = time.perf_counter()
+
+            tta_cache_search_ms = 0.0
+            tta_judge_cache_ms = 0.0
+            tta_chunk_search_ms = 0.0
+            tta_llm_generation_ms = 0.0
+            tta_judge_generation_ms = 0.0
+            tta_db_save_ms = 0.0
+
+            cache_hit_actual = False
+            generation_attempted = False
+            judge_verdict = False
+
+            real_scenario = "unknown"
+            final_answer = ""
+            final_url = None
 
             with TTATimingContext(self.collector, "TTA_DB_Context") as timing1:
                 dialog_context, context_time = self._measure_db_context_extraction(
@@ -254,33 +268,45 @@ class TTABenchmark:
                 cache_result, cache_hit, cache_time = self._measure_cache_search(
                     question
                 )
+                tta_cache_search_ms = cache_time
 
-            cache_total += 1
             if cache_hit:
-                cache_hits += 1
+                cache_hit_actual = True
 
                 with TTATimingContext(self.collector, "TTA_Judge_Cache") as timing3:
                     cached_answer, cached_url = cache_result
                     judge_result, judge_time = self._measure_judge_assessment(
                         dialog_context, question, cached_answer, "", generation=False
                     )
+                    tta_judge_cache_ms = judge_time
+
+                judge_verdict = judge_result
 
                 if judge_result:
                     final_answer = cached_answer
                     final_url = cached_url
+                    real_scenario = "cache_hit"
                 else:
+                    generation_attempted = True
+
                     with TTATimingContext(
                         self.collector, "TTA_Chunk_Search"
                     ) as timing4:
                         chunk, chunk_time = self._measure_chunk_search(question)
+                        tta_chunk_search_ms = chunk_time
 
                     if chunk:
+                        generation_attempted = True
+
                         with TTATimingContext(
                             self.collector, "TTA_LLM_Generation"
                         ) as timing5:
                             final_answer, llm_time = self._measure_llm_generation(
                                 dialog_context, chunk.text, question
                             )
+                            tta_llm_generation_ms = llm_time
+
+                        final_url = chunk.confluence_url
 
                         with TTATimingContext(
                             self.collector, "TTA_Judge_Generation"
@@ -294,23 +320,36 @@ class TTABenchmark:
                                     generation=True,
                                 )
                             )
+                            tta_judge_generation_ms = judge_time_gen
+                            judge_verdict = judge_result_gen
 
-                            if not judge_result_gen:
-                                final_answer = ""
+                        if not judge_result_gen:
+                            final_answer = ""
+                            real_scenario = "generation_judge_rejected"
+                        else:
+                            real_scenario = "generation"
                     else:
                         final_answer = ""
                         final_url = None
+                        real_scenario = "generation_chunk_not_found"
             else:
+                generation_attempted = True
+
                 with TTATimingContext(self.collector, "TTA_Chunk_Search") as timing4:
                     chunk, chunk_time = self._measure_chunk_search(question)
+                    tta_chunk_search_ms = chunk_time
 
                 if chunk:
+                    generation_attempted = True
+
                     with TTATimingContext(
                         self.collector, "TTA_LLM_Generation"
                     ) as timing5:
                         final_answer, llm_time = self._measure_llm_generation(
                             dialog_context, chunk.text, question
                         )
+                        tta_llm_generation_ms = llm_time
+
                     final_url = chunk.confluence_url
 
                     with TTATimingContext(
@@ -323,21 +362,46 @@ class TTABenchmark:
                             chunk.text,
                             generation=True,
                         )
+                        tta_judge_generation_ms = judge_time
+                        judge_verdict = judge_result
 
-                        if not judge_result:
-                            final_answer = ""
+                    if not judge_result:
+                        final_answer = ""
+                        real_scenario = "generation_judge_rejected"
+                    elif "not found" in final_answer.lower() or len(final_answer) == 0:
+                        real_scenario = "template"
+                    else:
+                        real_scenario = "generation"
                 else:
-                    final_answer = ""
-                    final_url = None
+                    real_scenario = "chunk_not_found"
 
             with TTATimingContext(self.collector, "TTA_DB_Save") as timing7:
                 qa_id, save_time = self._measure_db_save(
                     question, final_answer, final_url, test_user_id
                 )
+                tta_db_save_ms = save_time
 
             e2e_elapsed_ms = (time.perf_counter() - e2e_start) * 1000
             tta_e2e_values.append(e2e_elapsed_ms)
             self.collector.record("TTA_E2E", e2e_elapsed_ms)
+
+            item.update(
+                {
+                    "real_scenario": real_scenario,
+                    "real_answer": final_answer,
+                    "real_confluence_url": final_url,
+                    "real_judge_verdict": judge_verdict,
+                    "tta_e2e_ms": e2e_elapsed_ms,
+                    "tta_cache_search_ms": tta_cache_search_ms,
+                    "tta_judge_cache_ms": tta_judge_cache_ms,
+                    "tta_chunk_search_ms": tta_chunk_search_ms,
+                    "tta_llm_generation_ms": tta_llm_generation_ms,
+                    "tta_judge_generation_ms": tta_judge_generation_ms,
+                    "tta_db_save_ms": tta_db_save_ms,
+                    "cache_hit_actual": cache_hit_actual,
+                    "generation_attempted": generation_attempted,
+                }
+            )
 
             logger.debug(
                 f"Вопрос: {question[:50]}... | "
@@ -347,28 +411,54 @@ class TTABenchmark:
 
         metrics = self.collector.get_all_metrics()
 
-        cache_hit_rate = cache_hits / cache_total if cache_total > 0 else 0.0
-
-        e2e_stats = {
-            "TTA_E2E_mean": np.mean(tta_e2e_values) if tta_e2e_values else 0.0,
-            "TTA_E2E_std": np.std(tta_e2e_values) if tta_e2e_values else 0.0,
-            "TTA_E2E_min": np.min(tta_e2e_values) if tta_e2e_values else 0.0,
-            "TTA_E2E_max": np.max(tta_e2e_values) if tta_e2e_values else 0.0,
-            "TTA_E2E_P50": np.percentile(tta_e2e_values, 50) if tta_e2e_values else 0.0,
-            "TTA_E2E_P90": np.percentile(tta_e2e_values, 90) if tta_e2e_values else 0.0,
-            "TTA_E2E_P95": np.percentile(tta_e2e_values, 95) if tta_e2e_values else 0.0,
-            "TTA_E2E_P99": np.percentile(tta_e2e_values, 99) if tta_e2e_values else 0.0,
+        metrics_by_scenario = {
+            "cache_hit": {},
+            "generation": {},
+            "generation_judge_rejected": {},
+            "generation_chunk_not_found": {},
+            "template": {},
+            "chunk_not_found": {},
+            "unknown": {},
         }
 
-        metrics.update(e2e_stats)
-        metrics["Cache_Hit_Rate"] = cache_hit_rate
+        tta_e2e_by_scenario = {
+            "cache_hit": [],
+            "generation": [],
+            "generation_judge_rejected": [],
+            "generation_chunk_not_found": [],
+            "template": [],
+            "chunk_not_found": [],
+            "unknown": [],
+        }
 
-        logger.info(
-            f"E2E бенчмарк завершен. "
-            f"Среднее TTA: {metrics['TTA_E2E_mean']:.0f}ms, "
-            f"P95: {metrics['TTA_E2E_P95']:.0f}ms, "
-            f"Cache hit rate: {cache_hit_rate:.2%}"
-        )
+        for item in dataset:
+            scenario = item.get("real_scenario", "unknown")
+            tta_e2e = item.get("tta_e2e_ms", 0.0)
+            tta_e2e_by_scenario[scenario].append(tta_e2e)
+
+        for scenario in metrics_by_scenario:
+            tta_values = tta_e2e_by_scenario[scenario]
+            if tta_values:
+                metrics_by_scenario[scenario][f"TTA_E2E_mean"] = float(
+                    np.mean(tta_values)
+                )
+                metrics_by_scenario[scenario][f"TTA_E2E_P50"] = float(
+                    np.percentile(tta_values, 50)
+                )
+                metrics_by_scenario[scenario][f"TTA_E2E_P95"] = float(
+                    np.percentile(tta_values, 95)
+                )
+                metrics_by_scenario[scenario][f"TTA_E2E_P99"] = float(
+                    np.percentile(tta_values, 99)
+                )
+                metrics_by_scenario[scenario]["count"] = len(tta_values)
+
+        metrics.update(metrics_by_scenario)
+
+        total_questions = len(dataset)
+        metrics["total_questions"] = total_questions
+
+        logger.info(f"E2E бенчмарк завершен. Всего вопросов: {total_questions}")
 
         return metrics
 

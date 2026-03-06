@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from sqlalchemy import Engine, select
+from sqlalchemy import Engine, select, func
 from sqlalchemy.orm import Session
 
 try:
@@ -281,6 +281,264 @@ def generate_tta_dataset_stratified(
     logger.info(
         f"Сгенерирован стратифицированный датасет: "
         f"{len(cache_questions)} cache hits, {len(no_cache_questions)} no cache"
+    )
+    return dataset
+
+
+def generate_tta_dataset_with_scenarios(
+    engine: Engine,
+    limit_per_scenario: int = 25,
+    random_seed: Optional[int] = None,
+) -> List[Dict[str, Any]]:
+    """Сгенерировать датасет с разделением по 4 сценариям обработки.
+
+    Сценарии:
+    1. cache_hit: кэш-хит (score=5, длина 10-100)
+    2. generation: генерация (score=4 или None, длина 50-200, есть URL чанка)
+    3. chunk_not_found: чанк не найден (длина >300, редкие слова)
+    4. template: шаблонный ответ (score < 3, короткие <20)
+
+    Args:
+        engine: Движок базы данных
+        limit_per_scenario: Количество вопросов на каждый сценарий
+        random_seed: Seed для воспроизводимости
+
+    Returns:
+        Список записей с полями:
+        - question
+        - expected_scenario
+        - ground_truth_answer
+        - confluence_url
+        - score
+        - user_id
+        - created_at
+    """
+    if random_seed is not None:
+        random.seed(random_seed)
+
+    logger.info(
+        f"Генерация датасета по сценариям (limit_per_scenario={limit_per_scenario})"
+    )
+
+    with Session(engine) as session:
+        # Сценарий 1: cache_hit (score=5, длина 10-100)
+        cache_hit_questions = list(
+            session.scalars(
+                select(QuestionAnswer)
+                .where(QuestionAnswer.score == 5)
+                .where(QuestionAnswer.answer.isnot(None))
+                .limit(limit_per_scenario * 2)
+            ).all()
+        )
+
+        random.shuffle(cache_hit_questions)
+        cache_hit_dataset = []
+
+        for qa in cache_hit_questions[:limit_per_scenario]:
+            question = qa.question
+            if not question or len(question) < 10 or len(question) > 100:
+                continue
+
+            cache_hit_dataset.append(
+                {
+                    "id": qa.id,
+                    "question": question,
+                    "ground_truth_answer": qa.answer,
+                    "confluence_url": qa.confluence_url,
+                    "score": qa.score,
+                    "user_id": qa.user_id,
+                    "expected_scenario": "cache_hit",
+                    "created_at": qa.created_at.isoformat() if qa.created_at else None,
+                }
+            )
+
+        # Сценарий 2: generation (score=4 или None, длина 50-200, есть URL чанка)
+        generation_questions = list(
+            session.scalars(
+                select(QuestionAnswer)
+                .where((QuestionAnswer.score == 4) | (QuestionAnswer.score.is_(None)))
+                .where(QuestionAnswer.confluence_url.isnot(None))
+                .where(QuestionAnswer.confluence_url != "")
+                .where(QuestionAnswer.answer.isnot(None))
+                .limit(limit_per_scenario * 2)
+            ).all()
+        )
+
+        random.shuffle(generation_questions)
+        generation_dataset = []
+
+        for qa in generation_questions[:limit_per_scenario]:
+            question = qa.question
+            if not question or len(question) < 50 or len(question) > 200:
+                continue
+
+            generation_dataset.append(
+                {
+                    "id": qa.id,
+                    "question": question,
+                    "ground_truth_answer": qa.answer,
+                    "confluence_url": qa.confluence_url,
+                    "score": qa.score,
+                    "user_id": qa.user_id,
+                    "expected_scenario": "generation",
+                    "created_at": qa.created_at.isoformat() if qa.created_at else None,
+                }
+            )
+
+        # Сценарий 3: chunk_not_found (длина >300, редкие слова)
+        chunk_not_found_questions = list(
+            session.scalars(
+                select(QuestionAnswer)
+                .where(QuestionAnswer.answer.isnot(None))
+                .where(func.length(QuestionAnswer.question) > 300)
+                .limit(limit_per_scenario * 2)
+            ).all()
+        )
+
+        random.shuffle(chunk_not_found_questions)
+        chunk_not_found_dataset = []
+
+        for qa in chunk_not_found_questions[:limit_per_scenario]:
+            chunk_not_found_dataset.append(
+                {
+                    "id": qa.id,
+                    "question": qa.question,
+                    "ground_truth_answer": qa.answer,
+                    "confluence_url": None,  # Сначала ставим None, чтобы гарантированно не найти чанк
+                    "score": qa.score,
+                    "user_id": qa.user_id,
+                    "expected_scenario": "chunk_not_found",
+                    "created_at": qa.created_at.isoformat() if qa.created_at else None,
+                }
+            )
+
+        # Сценарий 4: template (score < 3, короткие <20)
+        template_questions = list(
+            session.scalars(
+                select(QuestionAnswer)
+                .where(QuestionAnswer.score < 3)
+                .where(QuestionAnswer.confluence_url.isnot(None))
+                .where(QuestionAnswer.confluence_url != "")
+                .where(func.length(QuestionAnswer.question) < 20)
+                .limit(limit_per_scenario * 2)
+            ).all()
+        )
+
+        random.shuffle(template_questions)
+        template_dataset = []
+
+        for qa in template_questions[:limit_per_scenario]:
+            template_dataset.append(
+                {
+                    "id": qa.id,
+                    "question": qa.question,
+                    "ground_truth_answer": qa.answer,
+                    "confluence_url": qa.confluence_url,  # Есть URL чанка
+                    "score": qa.score,
+                    "user_id": qa.user_id,
+                    "expected_scenario": "template",
+                    "created_at": qa.created_at.isoformat() if qa.created_at else None,
+                }
+            )
+
+        # Сценарий 2: generation (score=4 или None, длина 50-200, есть URL чанка)
+        generation_questions = session.scalars(
+            select(QuestionAnswer)
+            .where((QuestionAnswer.score == 4) | (QuestionAnswer.score.is_(None)))
+            .where(QuestionAnswer.confluence_url.isnot(None))
+            .where(QuestionAnswer.confluence_url != "")
+            .where(QuestionAnswer.answer.isnot(None))
+            .limit(limit_per_scenario * 2)
+        ).all()
+
+        random.shuffle(generation_questions)
+        generation_dataset = []
+
+        for qa in generation_questions[:limit_per_scenario]:
+            question = qa.question
+            if not question or len(question) < 50 or len(question) > 200:
+                continue
+
+            generation_dataset.append(
+                {
+                    "id": qa.id,
+                    "question": question,
+                    "ground_truth_answer": qa.answer,
+                    "confluence_url": qa.confluence_url,
+                    "score": qa.score,
+                    "user_id": qa.user_id,
+                    "expected_scenario": "generation",
+                    "created_at": qa.created_at.isoformat() if qa.created_at else None,
+                }
+            )
+
+        # Сценарий 3: chunk_not_found (длина >300, редкие слова)
+        chunk_not_found_questions = session.scalars(
+            select(QuestionAnswer)
+            .where(QuestionAnswer.answer.isnot(None))
+            .where(func.length(QuestionAnswer.question) > 300)
+            .limit(limit_per_scenario * 2)
+        ).all()
+
+        random.shuffle(chunk_not_found_questions)
+        chunk_not_found_dataset = []
+
+        for qa in chunk_not_found_questions[:limit_per_scenario]:
+            chunk_not_found_dataset.append(
+                {
+                    "id": qa.id,
+                    "question": qa.question,
+                    "ground_truth_answer": qa.answer,
+                    "confluence_url": None,  # Сначала ставим None, чтобы гарантированно не найти чанк
+                    "score": qa.score,
+                    "user_id": qa.user_id,
+                    "expected_scenario": "chunk_not_found",
+                    "created_at": qa.created_at.isoformat() if qa.created_at else None,
+                }
+            )
+
+        # Сценарий 4: template (score < 3, короткие <20)
+        template_questions = session.scalars(
+            select(QuestionAnswer)
+            .where(QuestionAnswer.score < 3)
+            .where(QuestionAnswer.confluence_url.isnot(None))
+            .where(QuestionAnswer.confluence_url != "")
+            .where(func.length(QuestionAnswer.question) < 20)
+            .limit(limit_per_scenario * 2)
+        ).all()
+
+        random.shuffle(template_questions)
+        template_dataset = []
+
+        for qa in template_questions[:limit_per_scenario]:
+            template_dataset.append(
+                {
+                    "id": qa.id,
+                    "question": qa.question,
+                    "ground_truth_answer": qa.answer,
+                    "confluence_url": qa.confluence_url,  # Есть URL чанка
+                    "score": qa.score,
+                    "user_id": qa.user_id,
+                    "expected_scenario": "template",
+                    "created_at": qa.created_at.isoformat() if qa.created_at else None,
+                }
+            )
+
+        # Объединить и перемешать
+        dataset = (
+            cache_hit_dataset
+            + generation_dataset
+            + chunk_not_found_dataset
+            + template_dataset
+        )
+        random.shuffle(dataset)
+
+    logger.info(
+        f"Сгенерирован датасет по сценариям: "
+        f"{len(cache_hit_dataset)} cache_hit, "
+        f"{len(generation_dataset)} generation, "
+        f"{len(chunk_not_found_dataset)} chunk_not_found, "
+        f"{len(template_dataset)} template"
     )
 
     return dataset
