@@ -1,0 +1,23 @@
+
+services:
+  annotation:
+    # Используй готовый образ: docker load -i voproshalych-annotation.tar
+    # Или собери локально: docker build -t voproshalych-annotation .
+    image: voproshalych-annotation:latest
+    container_name: voproshalych-annotation
+    entrypoint: []
+    command: ["/app/entrypoint.sh"]
+    ports:
+      - "11434:11434"
+    volumes:
+      - ./data:/app/data
+      - ollama_models:/root/.ollama/models
+    restart: unless-stopped
+    cpu_shares: ${CPU_SHARES:-1024}
+    environment:
+      - OLLAMA_FLASH_ATTENTION=false
+      - OLLAMA_NUM_THREAD=16
+      - OLLAMA_NUM_GPU_LAYERS=0
+
+volumes:
+  ollama_models:

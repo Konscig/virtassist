@@ -95,7 +95,7 @@ def analyze_users_domain(engine: Engine, limit: int = 5000) -> dict[str, Any]:
 
         questions_timeline = []
         days_range = (last_date - first_date).days + 1
-        days_to_process = min(days_range, 90)
+        days_to_process = days_range
 
         user_platform_cache = {}
 

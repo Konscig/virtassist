@@ -100,26 +100,123 @@ Real user датасет используется для анализа реал
 
 ### Экспорт вопросов для аннотации
 
-Запускать из корневой директории проекта:
+Запускать из корневой директории проекта (voproshalych):
 
 ```bash
 # Выгрузка всех QuestionAnswer из БД в JSON
-uv run python export_for_annotation.py
+uv run python benchmarks/export_for_annotation.py
+
+# Выгрузка с фильтром по датам (2025-06-01 по 2026-02-28)
+uv run python benchmarks/export_for_annotation.py \
+    --start-date 2025-06-01 \
+    --end-date 2026-02-28
+
+# С лимитом
+uv run python benchmarks/export_for_annotation.py \
+    --start-date 2025-06-01 \
+    --end-date 2026-02-28 \
+    --limit 1000
 ```
 
 По умолчанию создаётся файл `benchmarks/data/dataset_annotation_YYYYMMDD_HHMMSS.json`.
+С датами: `benchmarks/data/dataset_from_20250601_to_20260228_YYYYMMDD_HHMMSS.json`.
+
+После запуска аннотации создаётся файл с суффиксом `_annotated`:
+`benchmarks/data/dataset_from_20250601_to_20260228_20260303_082311_annotated.json`
+
+Прогресс сохраняется каждые 10 вопросов.
 
 ### Как заполнять поля для аннотации
 
 В JSON-файле нужно заполнить следующие поля. Для каждого поля возможные значения:
+
+#### Аннотация через Ollama (РЕКОМЕНДУЕТСЯ)
+
+Запускать из корневой директории проекта (voproshalych), используя `.venv_ollama`:
+
+```bash
+# Убедись что Ollama запущена
+ollama serve
+
+# В другом терминале - запусти аннотацию
+.venv_ollama/bin/python benchmarks/annotate_with_ollama.py \
+    --input benchmarks/data/dataset_from_20250601_to_20260228_20260303_082311.json
+
+# С указанием модели (по умолчанию qwen3.5:27b)
+.venv_ollama/bin/python benchmarks/annotate_with_ollama.py \
+    --input benchmarks/data/dataset_from_20250601_to_20260228_20260303_082311_annotated.json \
+    --model qwen3.5:9b
+
+# Не пропускать уже аннотированные (перезаписать)
+.venv_ollama/bin/python benchmarks/annotate_with_ollama.py \
+    --input benchmarks/data/your_file.json \
+    --no-skip
+
+# Меньше логов (batch-size и delay)
+.venv_ollama/bin/python benchmarks/annotate_with_ollama.py \
+    --input benchmarks/data/your_file.json \
+    --batch-size 50 \
+    --delay 0.3
+
+# Проверить статус текущей аннотации
+.venv_ollama/bin/python benchmarks/annotate_with_ollama.py \
+    --input benchmarks/data/dataset_from_20250601_to_20260228_*.json \
+    --status
+
+# Запросить мягкую остановку (остановится после следующего батча)
+.venv_ollama/bin/python benchmarks/annotate_with_ollama.py \
+    --input benchmarks/data/dataset_from_20250601_to_20260228_20260303_082311.json \
+    --stop
+```
+
+### Мягкая остановка и возобновление
+
+Скрипт поддерживает безопасную остановку без потери прогресса.
+
+**Как остановить:**
+1. Запусти в другом терминале:
+   ```bash
+   .venv_ollama/bin/python benchmarks/annotate_with_ollama.py \
+       --input benchmarks/data/dataset_from_20250601_to_20260228_*.json \
+       --stop
+   ```
+2. Скрипт создаст файл `.stop_annotation` в `benchmarks/data/`
+3. После обработки следующего батча (10 вопросов) скрипт:
+   - Сохранит текущий прогресс в файл `_annotated.json`
+   - Завершит работу
+
+**Как проверить статус:**
+```bash
+.venv_ollama/bin/python benchmarks/annotate_with_ollama.py \
+    --input benchmarks/data/dataset_from_20250601_to_20260228_*.json \
+    --status
+```
+Вывод:
+- Всего вопросов
+- Уже проаннотировано
+- Осталось
+- Процент выполнения
+
+**Как возобновить:**
+Просто запусти команду аннотации снова — скрипт автоматически найдёт файл `_annotated.json` и продолжит с места остановки:
+```bash
+.venv_ollama/bin/python benchmarks/annotate_with_ollama.py \
+    --input benchmarks/data/dataset_from_20250601_to_20260228_*.json
+```
+
+Модель автоматически:
+1. Для вопросов БЕЗ ответа и confluence_url — заполнит только `annotate_is_small_talk`
+2. Для вопросов С ответом или confluence_url — заполнит ВСЕ поля
+
+#### Поля для аннотации
 
 #### annotate_answer_type — Тип ответа
 
 | Значение | Что писать |
 |---------|-----------|
 | `1` | **Пустой** — поле answer вообще пустое |
-| `2` | **Нет ответа / некорректный** — бот ответил, но ответ неполный/некорректный |
-| `3` | **Нормальный** — бот дал нормальный ответ |
+| `2` | **Нет ответа / некорректный** — бот ответил, но ответ неполный/некорректный или сомнительный |
+| `3` | **Идеальный** — только в крайних случаях, когда семантика вопроса и ответа идеально совпадают |
 
 #### annotate_has_source — Наличие источника
 
@@ -135,12 +232,16 @@ uv run python export_for_annotation.py
 | `0` | **Нет** — URL не релевантен вопросу |
 | `1` | **Да** — URL релевантен вопросу |
 
+*Заполняется ТОЛЬКО если есть источник (has_source=1)*
+
 #### annotate_answer_url_relevance — Релевантность ответа URL
 
 | Значение | Что писать |
 |---------|-----------|
 | `0` | **Нет** — ответ не соответствует URL |
 | `1` | **Да** — ответ соответствует URL |
+
+*Заполняется ТОЛЬКО если есть источник (has_source=1)*
 
 #### annotate_is_small_talk — Тип вопроса
 
@@ -149,31 +250,6 @@ uv run python export_for_annotation.py
 | `0` | **По делу** — конкретный вопрос по существу |
 | `1` | **Small talk** — привет, пока, как дела и т.п. |
 | `2` | **Про Вопрошалыча** — вопросы о системе (кто ты, что умеешь, кто создал) |
-
-| Значение | Что писать |
-|---------|-----------|
-| `0` | **Нет** — ответ не соответствует содержанию по ссылке |
-| `1` | **Да** — ответ корректно использует информацию со ссылки |
-| `2` | **Частично** — ответ частично соответствует источнику |
-
-#### annotate_is_small_talk — Это Small Talk?
-
-| Значение | Что писать |
-|---------|-----------|
-| `0` | **По делу** — вопрос по существу (про базу знаний, работу, процессы) |
-| `1` | **Small talk** — общий вопрос, болтовня, приветствие, прощание |
-
-Примеры small talk:
-- "Привет", "Здравствуй", "Hi", "Hello"
-- "Как дела?", "Как ты?"
-- "Пока", "До свидания"
-- "Спасибо"
-- "Кто ты?", "Что ты?"
-- Короткие вопросы < 50 символов без конкретной темы
-
-#### annotate_notes — Заметки
-
-Произвольный текст с комментариями. Можно оставить пустым `""`.
 
 ### Подсчёт аналитики
 

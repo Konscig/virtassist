@@ -1,0 +1,12 @@
+version: "3.8"
+
+services:
+  annotation:
+    image: voproshalych-annotation:latest
+    container_name: test-annotation
+    platform: linux/amd64
+    ports:
+      - "11435:11434"
+    volumes:
+      - ./data:/app/data
+    command: ["/app/entrypoint.sh"]

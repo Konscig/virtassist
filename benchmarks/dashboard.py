@@ -160,8 +160,101 @@ class RAGBenchmarkDashboard:
 
     def __init__(self):
         self.reports_dir = Path("benchmarks/reports")
+        self.data_dir = Path("benchmarks/data")
         self.runs = self._load_runs()
         self.users_data = self._load_users_data()
+        self.annotated_data = self._load_annotated_data()
+
+    def _load_annotated_data(self) -> Dict:
+        """Загрузить данные из последнего аннотированного датасета."""
+        annotated_files = sorted(self.data_dir.glob("dataset_from_*_annotated.json"))
+
+        if not annotated_files:
+            logger.info("Аннотированные файлы не найдены")
+            return {}
+
+        latest_file = annotated_files[-1]
+        try:
+            with open(latest_file, "r", encoding="utf-8") as f:
+                items = json.load(f)
+
+            # Вычислить метрики
+            return self._compute_annotated_metrics(items)
+        except Exception as e:
+            logger.warning("Ошибка загрузки аннотированного датасета: %s", e)
+            return {}
+
+    def _compute_annotated_metrics(self, items: List[Dict]) -> Dict:
+        """Вычислить метрики из аннотированного датасета."""
+        if not items:
+            return {}
+
+        total = len(items)
+
+        # Подсчёт метрик
+        empty_answers = sum(
+            1 for i in items if str(i.get("annotate_answer_type", "")) == "1"
+        )
+        bad_answers = sum(
+            1 for i in items if str(i.get("annotate_answer_type", "")) == "2"
+        )
+        good_answers = sum(
+            1 for i in items if str(i.get("annotate_answer_type", "")) == "3"
+        )
+
+        with_sources = sum(
+            1 for i in items if str(i.get("annotate_has_source", "")) == "1"
+        )
+
+        url_relevant = sum(
+            1 for i in items if str(i.get("annotate_url_relevance", "")) == "1"
+        )
+
+        answer_url_relevant = sum(
+            1 for i in items if str(i.get("annotate_answer_url_relevance", "")) == "1"
+        )
+
+        on_topic = sum(
+            1 for i in items if str(i.get("annotate_is_small_talk", "")) == "0"
+        )
+        small_talk = sum(
+            1 for i in items if str(i.get("annotate_is_small_talk", "")) == "1"
+        )
+        about_bot = sum(
+            1 for i in items if str(i.get("annotate_is_small_talk", "")) == "2"
+        )
+
+        # Даты
+        dates = [i.get("created_at", "")[:10] for i in items if i.get("created_at")]
+
+        answered = bad_answers + good_answers
+        good_answer_rate = (good_answers / answered * 100) if answered > 0 else 0
+
+        return {
+            "total_questions": total,
+            "empty_answers": empty_answers,
+            "empty_percent": round(empty_answers / total * 100, 1),
+            "bad_answers": bad_answers,
+            "bad_percent": round(bad_answers / total * 100, 1),
+            "good_answers": good_answers,
+            "good_percent": round(good_answers / total * 100, 1),
+            "with_sources": with_sources,
+            "with_source_percent": round(with_sources / total * 100, 1),
+            "url_relevant": url_relevant,
+            "url_relevant_percent": round(url_relevant / total * 100, 1),
+            "answer_url_relevant": answer_url_relevant,
+            "answer_url_relevant_percent": round(answer_url_relevant / total * 100, 1),
+            "on_topic": on_topic,
+            "on_topic_percent": round(on_topic / total * 100, 1),
+            "small_talk": small_talk,
+            "small_talk_percent": round(small_talk / total * 100, 1),
+            "about_bot": about_bot,
+            "about_bot_percent": round(about_bot / total * 100, 1),
+            "good_answer_rate": round(good_answer_rate, 1),
+            "period_start": min(dates) if dates else None,
+            "period_end": max(dates) if dates else None,
+            "date_distribution": dict(__import__("collections").Counter(dates)),
+        }
 
     def _load_users_data(self) -> Dict:
         """Загрузить данные анализа пользователей из JSON файла."""
@@ -1167,103 +1260,150 @@ class RAGBenchmarkDashboard:
         )
 
     def _create_domain_insights_tab(self):
-        """Создать вкладку анализа предметной области."""
+        """Создать вкладку анализа предметной области на основе аннотированного датасета."""
         import plotly.express as px
         import plotly.graph_objects as go
 
-        gr.Markdown("### Анализ предметной области на real-user данных")
+        gr.Markdown("### Анализ предметной области (аннотированный датасет)")
         gr.Markdown(
-            "**Внешние метрики** — метрики для оценки проблем в работе чат-бота"
+            "Анализ качества ответов бота на основе LLM-аннотации реальных вопросов пользователей"
         )
 
-        if not self.runs:
-            gr.Markdown("Нет запусков для domain analysis.")
+        data = self.annotated_data
+
+        if not data:
+            gr.Markdown(
+                "❌ Аннотированный датасет не найден. \n\n"
+                "Запустите аннотацию: `python annotate_with_ollama.py --input benchmarks/data/dataset_from_20250601_to_20260228_*.json --no-skip`"
+            )
             return
 
-        ordered_runs = list(reversed(self.runs))
+        # Период
+        period_text = f"📅 **Период:** {data.get('period_start', 'N/A')} — {data.get('period_end', 'N/A')}"
+        gr.Markdown(period_text)
 
-        def format_run_choice(run: Dict) -> str:
-            return (
-                f"{run['timestamp_readable']} | {run['dataset_type']} | "
-                f"{run['git_commit_hash'][:7]}"
-            )
+        # Основные метрики в одну строку
+        with gr.Row():
+            with gr.Column():
+                gr.Markdown(f"### {data.get('total_questions', 0)}")
+                gr.Markdown("**Всего вопросов**")
+            with gr.Column():
+                gr.Markdown(f"### {data.get('good_percent', 0)}%")
+                gr.Markdown("Нормальные ответы (type=3)")
+            with gr.Column():
+                gr.Markdown(f"### {data.get('bad_percent', 0)}%")
+                gr.Markdown("Некорректные ответы (type=2)")
+            with gr.Column():
+                gr.Markdown(f"### {data.get('empty_percent', 0)}%")
+                gr.Markdown("Пустые ответы (type=1)")
 
-        run_choices = [format_run_choice(run) for run in ordered_runs]
-        run_selector = gr.Dropdown(
-            choices=run_choices,
-            value=run_choices[0],
-            label="Выберите запуск",
+        gr.Markdown("---")
+
+        # Детальная статистика
+        gr.Markdown("#### 📊 Типы ответов")
+
+        answer_type_data = [
+            {
+                "Тип": "Пустые (1)",
+                "Количество": data.get("empty_answers", 0),
+                "Процент": data.get("empty_percent", 0),
+            },
+            {
+                "Тип": "Некорректные (2)",
+                "Количество": data.get("bad_answers", 0),
+                "Процент": data.get("bad_percent", 0),
+            },
+            {
+                "Тип": "Нормальные (3)",
+                "Количество": data.get("good_answers", 0),
+                "Процент": data.get("good_percent", 0),
+            },
+        ]
+        answer_type_df = pd.DataFrame(answer_type_data)
+
+        fig_at = px.bar(
+            answer_type_df,
+            x="Тип",
+            y="Количество",
+            text="Процент",
+            title="Распределение типов ответов",
+            color="Тип",
+        )
+        gr.Plot(value=fig_at)
+
+        gr.Markdown("#### 🔗 Источники и релевантность")
+
+        sources_data = [
+            {
+                "Метрика": "С источником",
+                "Значение": data.get("with_sources", 0),
+                "Процент": data.get("with_source_percent", 0),
+            },
+            {
+                "Метрика": "URL релевантен вопросу",
+                "Значение": data.get("url_relevant", 0),
+                "Процент": data.get("url_relevant_percent", 0),
+            },
+            {
+                "Метрика": "Ответ использует URL",
+                "Значение": data.get("answer_url_relevant", 0),
+                "Процент": data.get("answer_url_relevant_percent", 0),
+            },
+        ]
+        sources_df = pd.DataFrame(sources_data)
+
+        fig_src = px.bar(
+            sources_df,
+            x="Метрика",
+            y="Значение",
+            text="Процент",
+            title="Источники и релевантность URL",
+            color="Метрика",
+        )
+        gr.Plot(value=fig_src)
+
+        gr.Markdown("#### 💬 Типы вопросов")
+
+        question_types_data = [
+            {
+                "Тип": "По делу",
+                "Количество": data.get("on_topic", 0),
+                "Процент": data.get("on_topic_percent", 0),
+            },
+            {
+                "Тип": "Small talk",
+                "Количество": data.get("small_talk", 0),
+                "Процент": data.get("small_talk_percent", 0),
+            },
+            {
+                "Тип": "Про Вопрошалыча",
+                "Количество": data.get("about_bot", 0),
+                "Процент": data.get("about_bot_percent", 0),
+            },
+        ]
+        question_types_df = pd.DataFrame(question_types_data)
+
+        fig_qt = px.bar(
+            question_types_df,
+            x="Тип",
+            y="Количество",
+            text="Процент",
+            title="Типы вопросов",
+            color="Тип",
+        )
+        gr.Plot(value=fig_qt)
+
+        gr.Markdown("---")
+        gr.Markdown(
+            f"**Процент нормальных ответов от всех отвеченных:** {data.get('good_answer_rate', 0)}%"
         )
 
-        def build_domain_view(selected: str):
-            run = next(
-                (item for item in ordered_runs if format_run_choice(item) == selected),
-                None,
-            )
-            if run is None:
-                return "Запуск не найден", pd.DataFrame(), pd.DataFrame()
-
-            metrics = run.get("domain_analysis_metrics") or {}
-            if not metrics:
-                return (
-                    "В запуске нет domain_analysis_metrics",
-                    pd.DataFrame(),
-                    pd.DataFrame(),
-                )
-
-            summary_parts = [
-                f"**Всего вопросов:** `{metrics.get('total_questions', 0)}`",
-                f"**С ответами:** `{metrics.get('with_answers', 0)}` "
-                f"({_safe_float(metrics.get('with_answers_rate')) * 100:.1f}%)",
-                f"**Без ответов:** `{metrics.get('without_answers', 0)}` "
-                f"({(1 - _safe_float(metrics.get('with_answers_rate'))) * 100:.1f}%)",
-                f"**Средняя длина вопроса:** "
-                f"`{_safe_float(metrics.get('avg_question_length')):.2f}`",
-            ]
-
-            summary_text = "\n\n".join(summary_parts)
-
-            score_distribution = metrics.get("score_distribution", {})
-            score_df = pd.DataFrame(
-                [
-                    {"Score": str(score), "Count": count}
-                    for score, count in score_distribution.items()
-                ]
-            )
-
-            top_tokens = metrics.get("top_tokens_all", [])
-            token_df = pd.DataFrame(top_tokens)
-
-            return summary_text, score_df, token_df
-
-        initial_summary, initial_scores, initial_tokens = build_domain_view(
-            run_choices[0]
-        )
-        summary = gr.Markdown(value=initial_summary)
-
-        gr.Markdown("### Распределение оценок")
-        score_table = gr.Dataframe(
-            value=initial_scores,
+        # Таблица с данными
+        gr.Markdown("#### 📋 Детальные данные")
+        gr.Dataframe(
+            value=answer_type_df,
             interactive=False,
             wrap=True,
-            column_widths=["50%", "50%"],
-            headers=["Score", "Count"],
-        )
-
-        gr.Markdown("### Топ токенов в вопросах (топ-200)")
-        token_table = gr.Dataframe(
-            value=initial_tokens,
-            interactive=False,
-            wrap=True,
-            max_height=600,
-            column_widths=["50%", "50%"],
-            headers=["Токен", "Частота"],
-        )
-
-        run_selector.change(
-            fn=build_domain_view,
-            inputs=[run_selector],
-            outputs=[summary, score_table, token_table],
         )
 
     def _create_user_analytics_tab(self):
@@ -1273,10 +1413,11 @@ class RAGBenchmarkDashboard:
 
         gr.Markdown("### Анализ пользователей и их взаимодействия с чат-ботом")
         gr.Markdown(
-            "**Внешние метрики** — метрики для оценки проблем в работе чат-бота"
+            "**Анализ за ВСЁ время существования бота** — данные из БД question_answer"
         )
 
         users_data = self.users_data
+        annotated_data = self.annotated_data
 
         if not users_data:
             gr.Markdown(
@@ -1285,39 +1426,113 @@ class RAGBenchmarkDashboard:
             )
             return
 
-        summary_parts = [
-            f"**Всего пользователей:** `{users_data.get('total_users', 0)}`",
-            f"**С вопросами:** `{users_data.get('users_with_questions', 0)}`",
-            f"**Без вопросов:** `{users_data.get('users_without_questions', 0)}` "
-            f"({_safe_float(users_data.get('users_without_questions_rate')) * 100:.1f}%)",
-            f"**С хотя бы одним безответным вопросом:** `{users_data.get('users_with_unanswered', 0)}` "
-            f"({_safe_float(users_data.get('users_with_unanswered_rate')) * 100:.1f}%)",
-            f"**Полностью без ответов (ни на один вопрос):** `{users_data.get('users_with_only_unanswered', 0)}`",
-            f"**Всего вопросов (в анализе):** `{users_data.get('total_questions', 0)}`",
-            f"**Среднее число вопросов на пользователя:** "
-            f"`{_safe_float(users_data.get('avg_questions_per_user')):.2f}`",
-        ]
-        summary_text = "\n\n".join(summary_parts)
-        gr.Markdown(summary_text)
+        # Определить период из данных
+        timeline = users_data.get("questions_timeline", [])
+        period_start = None
+        period_end = None
+        if timeline:
+            dates = [t.get("date") for t in timeline if t.get("date")]
+            period_start = min(dates) if dates else None
+            period_end = max(dates) if dates else None
+
+        period_text = (
+            f"📅 **Период данных:** {period_start or 'N/A'} — {period_end or 'N/A'}"
+        )
+        gr.Markdown(period_text)
+
+        gr.Markdown("---")
+
+        # Основные метрики
+        total_users = users_data.get("total_users", 0)
+        users_with_questions = users_data.get("users_with_questions", 0)
+        users_without_questions = users_data.get("users_without_questions", 0)
+        users_with_unanswered = users_data.get("users_with_unanswered", 0)
+        users_with_only_unanswered = users_data.get("users_with_only_unanswered", 0)
+
+        with gr.Row():
+            with gr.Column():
+                gr.Markdown(f"### {total_users}")
+                gr.Markdown("**Всего пользователей**")
+            with gr.Column():
+                gr.Markdown(f"### {users_with_questions}")
+                gr.Markdown("С вопросами")
+            with gr.Column():
+                gr.Markdown(
+                    f"### {users_without_questions} ({users_data.get('users_without_questions_rate', 0) * 100:.1f}%)"
+                )
+                gr.Markdown("Без вопросов")
+            with gr.Column():
+                gr.Markdown(f"### {users_with_unanswered}")
+                gr.Markdown("С хотя бы одним без ответа")
+
+        gr.Markdown(f"**Полностью без ответов:** {users_with_only_unanswered}")
+
+        gr.Markdown("---")
+
+        # Метрики - ровная таблица
+        without_rate = users_data.get("users_without_questions_rate", 0) * 100
+
+        metrics_table = f"""| Метрика | Значение |
+|---|---|
+| Всего пользователей | **{total_users}** |
+| С вопросами | **{users_with_questions}** |
+| Без вопросов | **{users_without_questions}** ({without_rate:.1f}%) |
+| С хотя бы одним без ответа | **{users_with_unanswered}** |
+| Полностью без ответов | **{users_with_only_unanswered}** |
+| Среднее число вопросов на пользователя | **{users_data.get("avg_questions_per_user", 0):.2f}** |
+"""
+        gr.Markdown(metrics_table)
+
+        gr.Markdown("---")
+
+        # Метрики из аннотированного датасета (по user_id)
+        if annotated_data:
+            gr.Markdown("#### 📊 Метрики из аннотированного датасета")
+
+            annotated_table = f"""| Метрика | Значение |
+|---|---|
+| Всего вопросов | **{annotated_data.get("total_questions", 0)}** |
+| Период | {annotated_data.get("period_start", "N/A")} — {annotated_data.get("period_end", "N/A")} |
+| Нормальные ответы (type=3) | **{annotated_data.get("good_percent", 0)}%** |
+| Некорректные ответы (type=2) | **{annotated_data.get("bad_percent", 0)}%** |
+| Пустые ответы (type=1) | **{annotated_data.get("empty_percent", 0)}%** |
+| С источником | **{annotated_data.get("with_source_percent", 0)}%** |
+| URL релевантен вопросу | **{annotated_data.get("url_relevant_percent", 0)}%** |
+| По делу | **{annotated_data.get("on_topic_percent", 0)}%** |
+| Small talk | **{annotated_data.get("small_talk_percent", 0)}%** |
+| Про Вопрошалыча | **{annotated_data.get("about_bot_percent", 0)}%** |
+"""
+            gr.Markdown(annotated_table)
+
+        gr.Markdown("---")
 
         gr.Markdown("### Распределение вопросов на пользователя")
         qpu_dist = users_data.get("questions_per_user_distribution", {})
         if qpu_dist:
-            qpu_df = pd.DataFrame(
-                [
-                    {"Количество вопросов": k, "Пользователей": v}
-                    for k, v in qpu_dist.items()
-                ]
-            )
-            qpu_fig = px.bar(
-                qpu_df,
-                x="Количество вопросов",
-                y="Пользователей",
-                title="Распределение вопросов на пользователя",
-            )
-            qpu_fig.update_xaxes(showgrid=True)
-            qpu_fig.update_yaxes(showgrid=True)
-            gr.Plot(value=qpu_fig)
+            # Преобразуем данные - уберём "5+" и покажем все значения
+            qpu_items = []
+            for k, v in qpu_dist.items():
+                if k == "5+":
+                    continue  # Пропустим 5+, покажем только точные значения
+                try:
+                    qpu_items.append(
+                        {"Количество вопросов": int(k), "Пользователей": v}
+                    )
+                except ValueError:
+                    pass
+
+            if qpu_items:
+                qpu_df = pd.DataFrame(qpu_items)
+                qpu_df = qpu_df.sort_values("Количество вопросов")
+                qpu_fig = px.bar(
+                    qpu_df,
+                    x="Количество вопросов",
+                    y="Пользователей",
+                    title="Распределение вопросов на пользователя",
+                )
+                qpu_fig.update_xaxes(showgrid=True, dtick=1)
+                qpu_fig.update_yaxes(showgrid=True)
+                gr.Plot(value=qpu_fig)
 
         gr.Markdown("### Пользователи по платформам")
         platform_data = users_data.get("users_by_platform", {})

@@ -66,7 +66,7 @@ docker compose -f docker-compose.benchmarks.yml up -d db db-migrate
 uv sync
 
 # Загрузить дамп БД
-uv run python benchmarks/load_database_dump.py --dump benchmarks/data/dump/virtassist_backup_20260213.dump
+uv run python benchmarks/load_database_dump.py --dump benchmarks/data/dump/virtassist_backup_20260228.dump
 
 # Сгенерировать эмбеддинги
 uv run python benchmarks/generate_embeddings.py --chunks

@@ -23,6 +23,17 @@ from qa.database import QuestionAnswer, create_engine
 
 logger = logging.getLogger(__name__)
 
+# Load URL to title mapping
+CONFLUENCE_URLS_JSON = Path(__file__).parent / "data" / "confluence_urls.json"
+try:
+    with open(CONFLUENCE_URLS_JSON, "r", encoding="utf-8") as f:
+        CONFLUENCE_URLS = json.load(f)
+except FileNotFoundError:
+    logger.warning(
+        f"Файл {CONFLUENCE_URLS_JSON} не найден, названия URL не будут добавлены"
+    )
+    CONFLUENCE_URLS = {}
+
 
 ANNOTATION_FIELDS = {
     "answer_type": "Тип ответа: 1=пустой, 2=нет ответа/некорректный, 3=нормальный",
@@ -37,14 +48,20 @@ def export_for_annotation(
     engine,
     output_path: Path,
     limit: int | None = None,
+    start_date: datetime | None = None,
+    end_date: datetime | None = None,
 ) -> dict[str, Any]:
     """Экспортировать QuestionAnswer для аннотации в JSON."""
     with Session(engine) as session:
-        query = (
-            select(QuestionAnswer)
-            .options(selectinload(QuestionAnswer.user))
-            .order_by(QuestionAnswer.id)
-        )
+        query = select(QuestionAnswer).options(selectinload(QuestionAnswer.user))
+
+        if start_date:
+            query = query.where(QuestionAnswer.created_at >= start_date)
+        if end_date:
+            query = query.where(QuestionAnswer.created_at <= end_date)
+
+        query = query.order_by(QuestionAnswer.id)
+
         if limit:
             query = query.limit(limit)
 
@@ -64,11 +81,17 @@ def export_for_annotation(
         answer = row.answer or ""
         confluence_url = row.confluence_url or ""
 
+        # Get title for the URL if exists
+        source_title = ""
+        if confluence_url and confluence_url in CONFLUENCE_URLS:
+            source_title = CONFLUENCE_URLS[confluence_url].get("title", "")
+
         item = {
             "id": row.id,
             "question": row.question or "",
             "answer": answer,
             "confluence_url": confluence_url,
+            "source_title": source_title,
             "score": row.score if row.score is not None else None,
             "user_id": row.user_id,
             "platform": platform,
@@ -77,19 +100,6 @@ def export_for_annotation(
 
         for key in annotation_keys:
             item[f"annotate_{key}"] = None
-
-        item["annotate_is_small_talk"] = "0"
-
-        if not answer:
-            item["annotate_answer_type"] = "1"
-            item["annotate_answer_url_relevance"] = "0"
-
-        if not confluence_url:
-            item["annotate_has_source"] = "0"
-            item["annotate_url_relevance"] = "0"
-            item["annotate_answer_url_relevance"] = "0"
-        else:
-            item["annotate_has_source"] = "1"
 
         items.append(item)
 
@@ -122,11 +132,49 @@ def main() -> None:
         default=None,
         help="Путь для JSON файла (по умолчанию benchmarks/data/annotation_YYYYMMDD_HHMMSS.json)",
     )
+    parser.add_argument(
+        "--start-date",
+        type=str,
+        default=None,
+        help="Начальная дата (формат YYYY-MM-DD, например 2025-06-01)",
+    )
+    parser.add_argument(
+        "--end-date",
+        type=str,
+        default=None,
+        help="Конечная дата (формат YYYY-MM-DD, например 2026-02-28)",
+    )
     args = parser.parse_args()
+
+    start_date = None
+    end_date = None
+
+    if args.start_date:
+        try:
+            start_date = datetime.strptime(args.start_date, "%Y-%m-%d")
+        except ValueError:
+            logger.error("Неверный формат даты: %s", args.start_date)
+            return
+
+    if args.end_date:
+        try:
+            end_date = datetime.strptime(args.end_date, "%Y-%m-%d")
+            end_date = end_date.replace(hour=23, minute=59, second=59)
+        except ValueError:
+            logger.error("Неверный формат даты: %s", args.end_date)
+            return
 
     if args.output is None:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        args.output = f"benchmarks/data/dataset_annotation_{timestamp}.json"
+        if start_date or end_date:
+            date_part = ""
+            if start_date:
+                date_part += f"_from_{start_date.strftime('%Y%m%d')}"
+            if end_date:
+                date_part += f"_to_{end_date.strftime('%Y%m%d')}"
+            args.output = f"benchmarks/data/dataset{date_part}_{timestamp}.json"
+        else:
+            args.output = f"benchmarks/data/dataset_annotation_{timestamp}.json"
 
     logging.basicConfig(
         level=logging.INFO,
@@ -134,7 +182,13 @@ def main() -> None:
     )
 
     engine = create_engine(Config.SQLALCHEMY_DATABASE_URI)
-    result = export_for_annotation(engine, Path(args.output), limit=args.limit)
+    result = export_for_annotation(
+        engine,
+        Path(args.output),
+        limit=args.limit,
+        start_date=start_date,
+        end_date=end_date,
+    )
 
     print(f"\nЭкспорт завершён:")
     print(f"  Всего вопросов: {result['total_rows']}")
