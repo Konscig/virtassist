@@ -20,15 +20,16 @@ from dotenv import load_dotenv
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from qa.config import Config
-from qa.database import create_engine
+from qa.database import create_engine, Chunk, QuestionAnswer
 from benchmarks.models.tta_benchmark import TTABenchmark
-from benchmarks.data.tta_dataset_generator import (
+from benchmarks.tta_dataset_generator import (
     generate_tta_dataset_from_real_questions,
     generate_tta_dataset_with_chunks,
     save_tta_dataset,
     load_tta_dataset,
 )
 from sentence_transformers import SentenceTransformer
+from sqlalchemy import select, func
 
 logging.basicConfig(
     level=logging.INFO,
@@ -110,14 +111,11 @@ def check_prerequisites(engine) -> bool:
     Returns:
         True если все условия выполнены
     """
-    from sqlalchemy import select
-    from qa.database import Chunk, QuestionAnswer
-
     logger.info("Проверка предварительных условий...")
 
     with engine.connect() as conn:
-        chunk_count = conn.scalar(select(Chunk).count())
-        qa_count = conn.scalar(select(QuestionAnswer).count())
+        chunk_count = conn.scalar(select(func.count(Chunk.id)))
+        qa_count = conn.scalar(select(func.count(QuestionAnswer.id)))
 
     logger.info(f"Чанков в БД: {chunk_count}")
     logger.info(f"Вопросов в БД: {qa_count}")

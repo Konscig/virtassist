@@ -97,11 +97,12 @@ class TTABenchmark:
         Returns:
             Кортеж ((answer, url), cache_hit, время в мс)
         """
+        import asyncio
         from qa.main import find_similar_question
 
         start_time = time.perf_counter()
         try:
-            result = find_similar_question(self.encoder, question)
+            result = asyncio.run(find_similar_question(self.encoder, question))
             elapsed_ms = (time.perf_counter() - start_time) * 1000
             cache_hit = result is not None
             return result, cache_hit, elapsed_ms
@@ -239,6 +240,8 @@ class TTABenchmark:
         for item in dataset:
             question = item["question"]
             ground_truth = item.get("ground_truth_answer", "")
+            final_answer = ""
+            final_url = None
 
             e2e_start = time.perf_counter()
 
