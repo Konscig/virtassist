@@ -48,6 +48,7 @@ End-to-End качества, качества LLM-судьи и аналитик
 | [MODEL_COMPARISON_GUIDE.md](docs/MODEL_COMPARISON_GUIDE.md) | Гайд по multi-model сравнениям |
 | [manual_annotation_guide.md](docs/manual_annotation_guide.md) | Ручная аннотация датасетов |
 | [METRICS.md](docs/METRICS.md) | Научное описание всех метрик |
+| [TTA_GUIDE.md](docs/TTA_GUIDE.md) | Руководство по TTA (Time To Answer) бенчмаркам |
 
 ---
 
@@ -119,6 +120,61 @@ make run-dashboard-local
 
 ---
 
+## TTA (Time To Answer) Бенчмарки
+
+Модуль для измерения времени генерации ответа в RAG-системе.
+
+### Обзор
+
+TTA (Time To Answer) — время от момента отправки вопроса пользователем до получения ответа.
+
+### Режимы измерения
+
+- **E2E (End-to-End)**: Полное время ответа
+- **Component**: Время выполнения каждого компонента
+- **All**: Все режимы вместе
+
+### Измеряемые компоненты
+
+| Компонент | Описание |
+|-----------|----------|
+| `TTA_DB_Context` | Формирование контекста диалога |
+| `TTA_Cache_Search` | Поиск в кэше |
+| `TTA_Chunk_Search` | Поиск чанка через pgvector |
+| `TTA_LLM_Generation` | Генерация ответа через Mistral |
+| `TTA_Judge_Cache` | Оценка судьей (кэш) |
+| `TTA_Judge_Generation` | Оценка судьей (генерация) |
+| `TTA_DB_Save` | Сохранение в БД |
+| `TTA_E2E` | Полное время ответа |
+
+### Метрики
+
+- Перцентили: P50, P90, P95, P99
+- Статистика: mean, std, min, max
+- Cache Hit Rate: доля ответов из кэша
+
+### Использование
+
+```bash
+# E2E бенчмарк
+python run_tta_benchmark.py --mode e2e --limit 50
+
+# Компонентный бенчмарк
+python run_tta_benchmark.py --mode component --limit 100
+
+# Все режимы
+python run_tta_benchmark.py --mode all --limit 100
+
+# С сохранением датасета
+python run_tta_benchmark.py --mode e2e --limit 50 --save-dataset
+```
+
+### Документация
+
+Подробнее см. [TTA_GUIDE.md](docs/TTA_GUIDE.md).
+
+---
+
 ## Дополнительные аналитические скрипты
 
 - `visualize_vector_space.py` — UMAP 2D/3D.
@@ -128,6 +184,7 @@ make run-dashboard-local
 - `analyze_users_domain.py` — аналитика пользователей (пользователи, безответные вопросы, timeline).
 - `export_for_annotation.py` — выгрузка CSV для ручной аннотации вопросов/ответов.
 - `analyze_annotated.py` — подсчёт аналитики на основе размеченного датасета.
+- `run_tta_benchmark.py` — запуск TTA (Time To Answer) бенчмарков.
 
 ---
 
