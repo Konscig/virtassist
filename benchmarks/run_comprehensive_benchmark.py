@@ -748,6 +748,11 @@ def main():
             "production_judge": "ALIBABA_JUDGE_MODELS",
             "benchmark_judge": "ALIBABA_BM_JUDGE_MODELS",
         },
+        "zai": {
+            "generation": "ZAI_GEN_MODELS",
+            "production_judge": "ZAI_JUDGE_MODELS",
+            "benchmark_judge": "ZAI_BM_JUDGE_MODELS",
+        },
     }
 
     def resolve_models_from_source(source: str, category: str) -> list[str]:

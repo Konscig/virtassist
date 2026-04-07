@@ -80,15 +80,33 @@ def _get_judge_candidates() -> List[tuple[str, str, str]]:
     """Собрать кандидатов подключения к judge API из окружения."""
     candidates: List[tuple[str, str, str]] = []
 
-    benchmarks_api = os.getenv("BENCHMARKS_JUDGE_API_KEY")
-    benchmarks_base = os.getenv("BENCHMARKS_JUDGE_BASE_URL", "https://api.deepseek.com")
-    benchmarks_model = os.getenv("BENCHMARKS_JUDGE_MODEL", "deepseek-chat")
+    benchmarks_api = (
+        os.getenv("BENCHMARKS_JUDGE_API_KEY")
+        or os.getenv("ZAI_API_KEY")
+        or os.getenv("PROVIDER_ZAI_API_KEY")
+    )
+    benchmarks_base = os.getenv(
+        "BENCHMARKS_JUDGE_BASE_URL",
+        os.getenv("PROVIDER_ZAI_API_URL", "https://open.bigmodel.cn/api/paas/v4"),
+    )
+    benchmarks_model = os.getenv("BENCHMARKS_JUDGE_MODEL", "glm-4.7")
     if benchmarks_api:
         candidates.append((benchmarks_api, benchmarks_base, benchmarks_model))
 
-    project_api = os.getenv("JUDGE_API")
-    project_base = os.getenv("JUDGE_BASE_URL", "https://api.mistral.ai/v1")
-    project_model = os.getenv("JUDGE_MODEL", "mistral-small-latest")
+    project_api = (
+        os.getenv("JUDGE_API")
+        or os.getenv("GENERATION_API_KEY")
+        or os.getenv("MISTRAL_API_KEY")
+        or os.getenv("PROVIDER_ZAI_API_KEY")
+    )
+    project_base = os.getenv(
+        "JUDGE_BASE_URL",
+        os.getenv(
+            "GENERATION_API_URL",
+            os.getenv("PROVIDER_ZAI_API_URL", "https://open.bigmodel.cn/api/paas/v4"),
+        ),
+    )
+    project_model = os.getenv("JUDGE_MODEL", os.getenv("GENERATION_MODEL", "glm-4.7"))
     if project_api:
         candidates.append((project_api, project_base, project_model))
 
@@ -124,7 +142,7 @@ class LLMJudge:
         base_url: Optional[str] = None,
         model: Optional[str] = None,
         request_delay: float = 2.0,
-        request_timeout: float = 120.0,
+        request_timeout: float = 300.0,
         evaluation_mode: str = "direct",
     ):
         """Инициализировать LLM-судью.
@@ -142,6 +160,14 @@ class LLMJudge:
         if evaluation_mode not in {"direct", "reasoned"}:
             raise ValueError("evaluation_mode должен быть direct или reasoned")
         self.evaluation_mode = evaluation_mode
+        self.offline_mock = os.getenv("BENCHMARKS_OFFLINE_MOCK", "0") == "1"
+
+        if self.offline_mock:
+            self.model = "offline-mock"
+            self.client = None
+            self.request_delay = 0.0
+            logger.warning("LLMJudge запущен в offline mock режиме")
+            return
 
         candidates: List[tuple[str, str, str]] = []
         if api_key and base_url and model:
@@ -221,6 +247,14 @@ class LLMJudge:
         Raises:
             RuntimeError: Если не удалось сгенерировать вопрос
         """
+        if self.offline_mock:
+            compact = " ".join(chunk_text.strip().split())
+            return {
+                "question": "Подскажи, что сказано в этом документе?",
+                "ground_truth_answer": compact[:240]
+                or "По данному фрагменту ответ не найден.",
+            }
+
         prompt = """Тебе показали фрагмент внутренней документации университета.
 
 Сгенерируй ОДИН осмысленный вопрос в поддержку и краткий идеальный ответ.
@@ -308,6 +342,11 @@ class LLMJudge:
         Raises:
             RuntimeError: Если не удалось получить оценку
         """
+        if self.offline_mock:
+            if not answer.strip():
+                return 1.0
+            return 4.0 if context.strip() else 3.0
+
         prompt = f"""Оцени точность ответа по шкале от 1 до 5.
 
 Критерии:
@@ -386,6 +425,11 @@ class LLMJudge:
         Raises:
             RuntimeError: Если не удалось получить оценку
         """
+        if self.offline_mock:
+            if not answer.strip():
+                return 1.0
+            return 4.0
+
         prompt = f"""Оцени релевантность ответа на вопрос по шкале от 1 до 5.
 
 Критерии:
@@ -465,6 +509,13 @@ class LLMJudge:
         Raises:
             RuntimeError: Если не удалось получить оценку
         """
+        if self.offline_mock:
+            if not system_answer.strip():
+                return 1.0
+            if system_answer.strip() == ground_truth_answer.strip():
+                return 5.0
+            return 4.0
+
         prompt = """Оцени качество ответа системы по сравнению с идеальным ответом по шкале от 1 до 5.
 
 Критерии:
@@ -532,6 +583,13 @@ class LLMJudge:
         ground_truth_answer: str,
     ) -> float:
         """Оценить корректность ответа относительно эталона по шкале 1-5."""
+        if self.offline_mock:
+            if not system_answer.strip():
+                return 1.0
+            if system_answer.strip() == ground_truth_answer.strip():
+                return 5.0
+            return 4.0
+
         prompt = f"""Оцени корректность ответа системы по отношению к эталонному ответу.
 
 Критерии:

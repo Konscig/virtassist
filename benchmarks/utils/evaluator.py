@@ -9,6 +9,18 @@ from typing import Dict, List, Set
 import numpy as np
 
 
+def _unique_preserve_order(values: List[str]) -> List[str]:
+    """Удалить дубликаты, сохранив порядок первого появления."""
+    seen: set[str] = set()
+    result: list[str] = []
+    for value in values:
+        if value in seen:
+            continue
+        seen.add(value)
+        result.append(value)
+    return result
+
+
 def recall_at_k(
     retrieved_urls: List[str],
     relevant_urls: Set[str],
@@ -30,7 +42,7 @@ def recall_at_k(
     if not relevant_urls:
         return 0.0
 
-    top_k_urls = set(retrieved_urls[:k])
+    top_k_urls = set(_unique_preserve_order(retrieved_urls)[:k])
     hits = len(top_k_urls & relevant_urls)
 
     return hits / len(relevant_urls)
@@ -54,7 +66,7 @@ def precision_at_k(
     if k == 0:
         return 0.0
 
-    top_k_urls = set(retrieved_urls[:k])
+    top_k_urls = set(_unique_preserve_order(retrieved_urls)[:k])
     hits = len(top_k_urls & relevant_urls)
 
     return hits / k
@@ -70,7 +82,7 @@ def mrr(retrieved_urls: List[str], relevant_urls: Set[str]) -> float:
     Returns:
         MRR: Обратный ранг первого релевантного документа
     """
-    for i, url in enumerate(retrieved_urls, 1):
+    for i, url in enumerate(_unique_preserve_order(retrieved_urls), 1):
         if url in relevant_urls:
             return 1.0 / i
 
@@ -96,12 +108,13 @@ def ndcg_at_k(
         Принимает все URL из relevant_urls как равнозначные
         (gain = 1), т.к. у нас нет оценок релевантности.
     """
-    if k == 0 or not retrieved_urls:
+    dedup_retrieved = _unique_preserve_order(retrieved_urls)
+    if k == 0 or not dedup_retrieved:
         return 0.0
 
     # DCG
     dcg = 0.0
-    for i, url in enumerate(retrieved_urls[:k], 1):
+    for i, url in enumerate(dedup_retrieved[:k], 1):
         gain = 1.0 if url in relevant_urls else 0.0
         dcg += gain / np.log2(i + 1)
 

@@ -7,6 +7,7 @@
 """
 
 import logging
+import os
 import requests
 from typing import Any, Callable, Dict, List, Optional, Set
 
@@ -171,6 +172,8 @@ class RAGBenchmark:
         if get_answer_func is None:
             from qa.main import get_answer
 
+            offline_mock = os.getenv("BENCHMARKS_OFFLINE_MOCK", "0") == "1"
+
             def _get_answer_wrapper(question: str, context: str) -> str:
                 """Обёртка для вызова реальной функции генерации ответов.
 
@@ -181,6 +184,12 @@ class RAGBenchmark:
                 Returns:
                     Сгенерированный ответ
                 """
+                if offline_mock:
+                    ctx = " ".join((context or "").split())
+                    if not ctx:
+                        return "ответ не найден"
+                    return ctx[:260]
+
                 return get_answer(
                     dialog_history=[], knowledge_base=context, question=question
                 )

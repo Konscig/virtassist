@@ -1,7 +1,8 @@
 import numpy as np
 from pgvector.sqlalchemy import Vector
 from typing import Optional, List, TypedDict
-from sentence_transformers import SentenceTransformer
+
+# from sentence_transformers import SentenceTransformer  # ❌ Комментарь чтобы избежать циклического импорта regex
 from sqlalchemy import (
     Text,
     JSON,

@@ -5,7 +5,6 @@ import numpy as np
 from aiohttp import web
 import requests
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from sentence_transformers import SentenceTransformer
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 
@@ -41,7 +40,20 @@ text_splitter = RecursiveCharacterTextSplitter(
     length_function=len,
     is_separator_regex=False,
 )
-encoder_model = SentenceTransformer(Config.EMBEDDING_MODEL_PATH, device="cpu")  # type: ignore
+
+
+def get_sentence_transformer():
+    """Получить экземпляр SentenceTransformer.
+
+    Returns:
+        SentenceTransformer: модель для эмбеддингов
+    """
+    from sentence_transformers import SentenceTransformer
+
+    return SentenceTransformer(Config.EMBEDDING_MODEL_PATH, device="cpu")
+
+
+encoder_model = get_sentence_transformer()  # type: ignore
 
 
 def get_answer(dialog_history: list, knowledge_base: str, question: str) -> str:
@@ -461,6 +473,12 @@ if __name__ == "__main__":
     logging.basicConfig(
         level=logging.DEBUG,
         format="%(asctime)s - %(levelname)s - %(message)s",
+        handlers=[logging.StreamHandler()],
+    )
+    app = web.Application()
+    app.add_routes(routes)
+    web.run_app(app)
+ - %(levelname)s - %(message)s",
         handlers=[logging.StreamHandler()],
     )
     app = web.Application()
