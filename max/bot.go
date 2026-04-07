@@ -219,6 +219,9 @@ func (b *Bot) processRating(ctx context.Context, userID int64, qaID int64, score
 }
 
 func (b *Bot) answerQuestion(ctx context.Context, dbUserID int64, maxUserID int64, question string) error {
+	msg := maxbot.NewMessage().SetUser(maxUserID).SetText(BotStrings.TryFindAnswer).SetNotify(true)
+	msgID, err := b.api.Messages.Send(ctx, msg)
+
 	history, err := b.store.GetHistory(ctx, dbUserID, 30, 5)
 	if err != nil {
 		return err
@@ -238,14 +241,25 @@ func (b *Bot) answerQuestion(ctx context.Context, dbUserID int64, maxUserID int6
 	if err != nil {
 		return err
 	}
+
+	if msgID != "" {
+		parsedMsgID := strings.TrimPrefix(msgID, "mid.")
+		msgIDInt, err := strconv.ParseInt(parsedMsgID, 16, 64)
+		log.Printf("DeleteMessage: parsedID=%d, err=%v", msgIDInt, err)
+		if err == nil {
+			resp, delErr := b.api.Messages.DeleteMessage(ctx, msgIDInt)
+			log.Printf("DeleteMessage result: resp=%+v, err=%v", resp, delErr)
+		}
+	}
+
 	if urlPtr == nil {
 		return b.sendWithKeyboard(ctx, maxUserID, BotStrings.NotFound, helpKeyboardLayout())
 	}
 	if strings.TrimSpace(answer) == "" {
 		answer = BotStrings.NotAnswer
 	}
-	msg := fmt.Sprintf("%s\n\n%s %s\n\nОцените ответ: ❤ или 👎", answer, BotStrings.SourceURL, url)
-	return b.sendWithKeyboard(ctx, maxUserID, msg, ratingKeyboardLayout(qaID))
+	responseText := fmt.Sprintf("%s\n\n%s %s\n\nОцените ответ: ❤ или 👎", answer, BotStrings.SourceURL, url)
+	return b.sendWithKeyboard(ctx, maxUserID, responseText, ratingKeyboardLayout(qaID))
 }
 
 func (b *Bot) sendWithKeyboard(ctx context.Context, userID int64, text string, builder keyboardBuilder) error {
@@ -253,7 +267,7 @@ func (b *Bot) sendWithKeyboard(ctx context.Context, userID int64, text string, b
 }
 
 func (b *Bot) sendMessage(ctx context.Context, userID int64, text string, builder keyboardBuilder) error {
-	msg := maxbot.NewMessage().SetUser(userID).SetText(text)
+	msg := maxbot.NewMessage().SetUser(userID).SetText(text).SetNotify(true)
 	if builder != nil {
 		keyboard := b.api.Messages.NewKeyboardBuilder()
 		builder(keyboard)
