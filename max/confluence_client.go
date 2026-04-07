@@ -139,10 +139,8 @@ func (c *ConfluenceClient) fetchChildren(ctx context.Context, parentID string) (
 	params.Set("limit", "100")
 	var resp struct {
 		Results []struct {
-			Content struct {
-				ID    string `json:"id"`
-				Title string `json:"title"`
-			} `json:"content"`
+			ID    string `json:"id"`
+			Title string `json:"title"`
 		} `json:"results"`
 	}
 	if err := c.getJSON(ctx, endpoint, params, &resp); err != nil {
@@ -150,7 +148,7 @@ func (c *ConfluenceClient) fetchChildren(ctx context.Context, parentID string) (
 	}
 	entries := make([]ConfluenceEntry, 0, len(resp.Results))
 	for _, r := range resp.Results {
-		entry := ConfluenceEntry{ID: r.Content.ID, Title: r.Content.Title}
+		entry := ConfluenceEntry{ID: r.ID, Title: r.Title}
 		if entry.ID != "" && entry.Title != "" {
 			entries = append(entries, entry)
 		}

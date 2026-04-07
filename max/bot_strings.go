@@ -11,7 +11,6 @@ var BotStrings = struct {
 	UnsubscribeMessage string
 	ConfluenceButton   string
 	WhichInfo          string
-	HelpVPNNotice      string
 	TryFindAnswer      string
 	SourceURL          string
 	NotFound           string
@@ -32,7 +31,6 @@ var BotStrings = struct {
 	UnsubscribeMessage: "Вам больше не будут приходить уведомления от чат-бота 😢",
 	ConfluenceButton:   "Справка",
 	WhichInfo:          "Какую информацию вы хотите получить?",
-	HelpVPNNotice:      "Справочное меню доступно только из сети ТюмГУ или через корпоративный VPN.",
 	TryFindAnswer:      "Сейчас я попробую ответить на этот вопрос, это может занять какое-то время...",
 	SourceURL:          "Подробнее:",
 	NotFound:           "К сожалению, в моей базе знаний нет ответа на этот вопрос 😢, попробуйте задать другой вопрос",

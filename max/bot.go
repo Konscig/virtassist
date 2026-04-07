@@ -133,7 +133,17 @@ func (b *Bot) resetDialog(ctx context.Context, userID int64, maxID int64) error 
 }
 
 func (b *Bot) handleHelp(ctx context.Context, userID int64) error {
-	return b.sendWithKeyboard(ctx, userID, BotStrings.HelpVPNNotice, helpKeyboardLayout())
+	if b.conf == nil {
+		return b.sendWithKeyboard(ctx, userID, BotStrings.NotAvailable, helpKeyboardLayout())
+	}
+	entries, err := b.conf.RootEntries(ctx)
+	if err != nil {
+		return b.sendWithKeyboard(ctx, userID, BotStrings.NotAvailable, helpKeyboardLayout())
+	}
+	if len(entries) == 0 {
+		return b.sendWithKeyboard(ctx, userID, BotStrings.NotAvailable, helpKeyboardLayout())
+	}
+	return b.sendWithKeyboard(ctx, userID, BotStrings.WhichInfo, confluenceKeyboardLayout(entries))
 }
 
 func (b *Bot) handleConfluenceText(ctx context.Context, userID int64, lowered string) error {
@@ -209,9 +219,6 @@ func (b *Bot) processRating(ctx context.Context, userID int64, qaID int64, score
 }
 
 func (b *Bot) answerQuestion(ctx context.Context, dbUserID int64, maxUserID int64, question string) error {
-	if err := b.sendMessage(ctx, maxUserID, BotStrings.TryFindAnswer, nil); err != nil {
-		return err
-	}
 	history, err := b.store.GetHistory(ctx, dbUserID, 30, 5)
 	if err != nil {
 		return err
