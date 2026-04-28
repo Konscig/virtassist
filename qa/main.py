@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from contextlib import redirect_stderr
 import io
 import logging
@@ -473,12 +475,6 @@ if __name__ == "__main__":
     logging.basicConfig(
         level=logging.DEBUG,
         format="%(asctime)s - %(levelname)s - %(message)s",
-        handlers=[logging.StreamHandler()],
-    )
-    app = web.Application()
-    app.add_routes(routes)
-    web.run_app(app)
- - %(levelname)s - %(message)s",
         handlers=[logging.StreamHandler()],
     )
     app = web.Application()

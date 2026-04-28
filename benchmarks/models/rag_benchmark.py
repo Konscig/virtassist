@@ -8,6 +8,7 @@
 
 import logging
 import os
+import time
 import requests
 from typing import Any, Callable, Dict, List, Optional, Set
 
@@ -287,12 +288,25 @@ class RAGBenchmark:
         logger.info(f"Запуск Tier 1 (Retrieval Accuracy) с {len(dataset)} записями")
         logger.info("Используются реальные SQL запросы с pgvector")
 
+        url_to_db_chunk_ids: Dict[str, List[int]] = {}
+        with Session(self.engine) as session:
+            all_chunks = session.scalars(
+                select(Chunk).where(Chunk.confluence_url.isnot(None))
+            ).all()
+            for c in all_chunks:
+                url_to_db_chunk_ids.setdefault(c.confluence_url, []).append(c.id)
+        logger.info(
+            f"URL→chunk_id маппинг: {len(url_to_db_chunk_ids)} URL, "
+            f"{sum(len(v) for v in url_to_db_chunk_ids.values())} чанков"
+        )
+
         hit_rates = {k: 0 for k in [1, 5, 10]}
         reciprocal_ranks = []
         retrieval_consistency_scores = []
         retrieval_questions: List[str] = []
         retrieval_results: Dict[str, List[str]] = {}
         retrieval_ground_truth: Dict[str, Set[str]] = {}
+        search_times: List[float] = []
 
         for item in dataset:
             raw_chunk_id = item.get("chunk_id")
@@ -304,8 +318,20 @@ class RAGBenchmark:
             relevant_chunk_ids = self._extract_relevant_chunk_ids(item, chunk_id)
             relevant_urls = self._extract_relevant_urls(item)
 
-            question_embedding = self.encoder.encode(question)
+            if not relevant_urls:
+                relevant_urls = set()
+                for ds_cid in relevant_chunk_ids:
+                    pass
 
+            db_relevant_chunk_ids: Set[int] = set()
+            for url in relevant_urls:
+                if url in url_to_db_chunk_ids:
+                    db_relevant_chunk_ids.update(url_to_db_chunk_ids[url])
+            if not db_relevant_chunk_ids:
+                db_relevant_chunk_ids = relevant_chunk_ids
+
+            t0 = time.perf_counter()
+            question_embedding = self.encoder.encode(question)
             with Session(self.engine) as session:
                 top_chunks = session.scalars(
                     select(Chunk)
@@ -315,7 +341,11 @@ class RAGBenchmark:
                 ).all()
 
                 top_chunk_ids = [c.id for c in top_chunks]
-                top_urls = [c.confluence_url for c in top_chunks if c.confluence_url]
+                top_urls = [
+                    c.confluence_url for c in top_chunks if c.confluence_url
+                ]
+
+                search_times.append(time.perf_counter() - t0)
 
                 if consistency_runs > 1:
                     per_question_runs = [top_chunk_ids]
@@ -342,13 +372,15 @@ class RAGBenchmark:
 
                 for k in [1, 5, 10]:
                     if k <= top_k and set(top_chunk_ids[:k]).intersection(
-                        relevant_chunk_ids
+                        db_relevant_chunk_ids
                     ):
                         hit_rates[k] += 1
 
                 first_rank = 0
-                for idx, candidate_chunk_id in enumerate(top_chunk_ids, start=1):
-                    if candidate_chunk_id in relevant_chunk_ids:
+                for idx, candidate_chunk_id in enumerate(
+                    top_chunk_ids, start=1
+                ):
+                    if candidate_chunk_id in db_relevant_chunk_ids:
                         first_rank = idx
                         break
                 reciprocal_ranks.append(1.0 / first_rank if first_rank else 0.0)
@@ -378,6 +410,10 @@ class RAGBenchmark:
             "retrieval_consistency": float(np.mean(retrieval_consistency_scores))
             if retrieval_consistency_scores
             else 1.0,
+            "avg_search_time_sec": round(float(np.mean(search_times)), 4)
+            if search_times
+            else 0.0,
+            "total_search_time_sec": round(sum(search_times), 2),
         }
 
         if retrieval_questions:
